@@ -37,7 +37,7 @@
 //----------------------------------------------------------------------------
 // Send buffer via USART
 //----------------------------------------------------------------------------
-void SendBuffer(uint32_t usart_periph, uint8_t buffer[], uint8_t length);
+void SendBuffer(uint32_t usart_periph, const uint8_t buffer[], uint8_t length);
 
 //----------------------------------------------------------------------------
 // Calculate CRC

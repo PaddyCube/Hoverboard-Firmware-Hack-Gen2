@@ -51,7 +51,8 @@ uint8_t usartSteer_COM_rx_buf[USART_STEER_COM_RX_BUFFERSIZE];
 
 // DMA (ADC) structs
 dma_parameter_struct dma_init_struct_adc;
-extern adc_buf_t adc_buffer;
+volatile adc_buf_t adc_buffer;
+
 
 //----------------------------------------------------------------------------
 // Initializes the interrupts
@@ -73,7 +74,8 @@ ErrStatus Watchdog_init(void)
 		// FWDGTRST flag set
 		rcu_all_reset_flag_clear();
 	}
-	
+
+
 	// Clock source is IRC40K (40 kHz)
 	// Prescaler is 16
 	// Reload value is 4096 (0x0FFF)
@@ -130,19 +132,29 @@ void GPIO_init(void)
 	rcu_periph_clock_enable(RCU_GPIOB);
 	rcu_periph_clock_enable(RCU_GPIOC);
 	rcu_periph_clock_enable(RCU_GPIOF);
-	
+
+
+	gpio_mode_set(LED_X1_1_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_X1_1_PIN);	
+	gpio_output_options_set(LED_X1_1_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_X1_1_PIN);
+	gpio_mode_set(LED_X1_2_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_X1_2_PIN);	
+	gpio_output_options_set(LED_X1_2_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_X1_2_PIN);
+	gpio_mode_set(LED_X1_3_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_X1_3_PIN);	
+	gpio_output_options_set(LED_X1_3_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_X1_3_PIN);
+
 	// Init green LED
-	gpio_mode_set(LED_GREEN_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,LED_GREEN);	
-	gpio_output_options_set(LED_GREEN_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_GREEN);
+	gpio_mode_set(LED_X2_1_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_X2_1_PIN);	
+	gpio_output_options_set(LED_X2_1_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_X2_1_PIN);
 	
 	// Init red LED
-	gpio_mode_set(LED_RED_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,LED_RED);	
-	gpio_output_options_set(LED_RED_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_RED);
+	gpio_mode_set(LED_X2_2_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_X2_2_PIN);	
+	gpio_output_options_set(LED_X2_2_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_X2_2_PIN);
 	
 	// Init orange LED
-	gpio_mode_set(LED_ORANGE_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,LED_ORANGE);	
-	gpio_output_options_set(LED_ORANGE_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_ORANGE);
-	
+	#ifdef LED_X2_3_PIN
+	gpio_mode_set(LED_X2_3_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_X2_3_PIN);	
+	gpio_output_options_set(LED_X2_3_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_X2_3_PIN);
+	#endif
+/*
 	// Init UPPER/LOWER LED
 	gpio_mode_set(UPPER_LED_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE,UPPER_LED_PIN);	
 	gpio_output_options_set(UPPER_LED_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, UPPER_LED_PIN);
@@ -152,7 +164,7 @@ void GPIO_init(void)
 	// Init mosfet output
 	gpio_mode_set(MOSFET_OUT_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, MOSFET_OUT_PIN);	
 	gpio_output_options_set(MOSFET_OUT_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, MOSFET_OUT_PIN);
-	
+*/	
 	// Init HAL input
 	gpio_mode_set(HALL_A_PORT , GPIO_MODE_INPUT, GPIO_PUPD_NONE, HALL_A_PIN);
 	gpio_mode_set(HALL_B_PORT , GPIO_MODE_INPUT, GPIO_PUPD_NONE, HALL_B_PIN);
@@ -169,19 +181,25 @@ void GPIO_init(void)
 	// Init ADC pins
 	gpio_mode_set(VBATT_PORT, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, VBATT_PIN);
 	gpio_mode_set(CURRENT_DC_PORT, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, CURRENT_DC_PIN);
-	gpio_mode_set(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO_PIN_6);
-	gpio_mode_set(GPIOB, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO_PIN_0);
+	gpio_mode_set(PHASE_A_PORT, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, PHASE_A_PIN);
+	gpio_mode_set(PHASE_B_PORT, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, PHASE_B_PIN);
+	//gpio_mode_set(GPIOA, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO_PIN_6);
+	//gpio_mode_set(GPIOB, GPIO_MODE_ANALOG, GPIO_PUPD_NONE, GPIO_PIN_0);
 	
 	// Init debug pin
+	#ifdef DEBUG_PIN
 	gpio_mode_set(DEBUG_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, DEBUG_PIN);	
 	gpio_output_options_set(DEBUG_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, DEBUG_PIN);
+	#endif
 	
 	// Init emergency shutdown pin
+	#ifdef TIMER_BLDC_EMERGENCY_SHUTDOWN_PIN
 	gpio_mode_set(TIMER_BLDC_EMERGENCY_SHUTDOWN_PORT , GPIO_MODE_AF, GPIO_PUPD_NONE, TIMER_BLDC_EMERGENCY_SHUTDOWN_PIN);
 	gpio_af_set(TIMER_BLDC_EMERGENCY_SHUTDOWN_PORT, GPIO_AF_2, TIMER_BLDC_EMERGENCY_SHUTDOWN_PIN);
+	#endif
 	
 	// Init PWM output Pins (Configure as alternate functions, push-pull, no pullup)
-  gpio_mode_set(TIMER_BLDC_GH_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, TIMER_BLDC_GH_PIN);
+    gpio_mode_set(TIMER_BLDC_GH_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, TIMER_BLDC_GH_PIN);
 	gpio_mode_set(TIMER_BLDC_BH_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, TIMER_BLDC_BH_PIN);
 	gpio_mode_set(TIMER_BLDC_YH_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, TIMER_BLDC_YH_PIN);
 	gpio_mode_set(TIMER_BLDC_GL_PORT, GPIO_MODE_AF, GPIO_PUPD_NONE, TIMER_BLDC_GL_PIN);
@@ -191,29 +209,32 @@ void GPIO_init(void)
   gpio_output_options_set(TIMER_BLDC_GH_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, TIMER_BLDC_GH_PIN);
   gpio_output_options_set(TIMER_BLDC_BH_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, TIMER_BLDC_BH_PIN);
   gpio_output_options_set(TIMER_BLDC_YH_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, TIMER_BLDC_YH_PIN);
-	gpio_output_options_set(TIMER_BLDC_GL_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, TIMER_BLDC_GL_PIN);
+  gpio_output_options_set(TIMER_BLDC_GL_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, TIMER_BLDC_GL_PIN);
   gpio_output_options_set(TIMER_BLDC_BL_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, TIMER_BLDC_BL_PIN);
   gpio_output_options_set(TIMER_BLDC_YL_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_2MHZ, TIMER_BLDC_YL_PIN);
 
   gpio_af_set(TIMER_BLDC_GH_PORT, GPIO_AF_2, TIMER_BLDC_GH_PIN);
   gpio_af_set(TIMER_BLDC_BH_PORT, GPIO_AF_2, TIMER_BLDC_BH_PIN);
-	gpio_af_set(TIMER_BLDC_YH_PORT, GPIO_AF_2, TIMER_BLDC_YH_PIN);
-	gpio_af_set(TIMER_BLDC_GL_PORT, GPIO_AF_2, TIMER_BLDC_GL_PIN);
+  gpio_af_set(TIMER_BLDC_YH_PORT, GPIO_AF_2, TIMER_BLDC_YH_PIN);
+  gpio_af_set(TIMER_BLDC_GL_PORT, GPIO_AF_2, TIMER_BLDC_GL_PIN);
   gpio_af_set(TIMER_BLDC_BL_PORT, GPIO_AF_2, TIMER_BLDC_BL_PIN);
-	gpio_af_set(TIMER_BLDC_YL_PORT, GPIO_AF_2, TIMER_BLDC_YL_PIN);
-	
+  gpio_af_set(TIMER_BLDC_YL_PORT, GPIO_AF_2, TIMER_BLDC_YL_PIN);
+/*	
 	// Init self hold
 	gpio_mode_set(SELF_HOLD_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, SELF_HOLD_PIN);	
 	gpio_output_options_set(SELF_HOLD_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, SELF_HOLD_PIN);
-	
+*/	
 	// Init USART0
+	#ifdef USART_STEER_COM_RX_PORT
 	gpio_mode_set(USART_STEER_COM_TX_PORT , GPIO_MODE_AF, GPIO_PUPD_PULLUP, USART_STEER_COM_TX_PIN);	
 	gpio_mode_set(USART_STEER_COM_RX_PORT , GPIO_MODE_AF, GPIO_PUPD_PULLUP, USART_STEER_COM_RX_PIN);
 	gpio_output_options_set(USART_STEER_COM_TX_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, USART_STEER_COM_TX_PIN);
 	gpio_output_options_set(USART_STEER_COM_RX_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, USART_STEER_COM_RX_PIN);	
 	gpio_af_set(USART_STEER_COM_TX_PORT, GPIO_AF_0, USART_STEER_COM_TX_PIN);
 	gpio_af_set(USART_STEER_COM_RX_PORT, GPIO_AF_0, USART_STEER_COM_RX_PIN);
-	
+	#endif
+
+/*	
 #ifdef MASTER	
 	// Init buzzer
 	gpio_mode_set(BUZZER_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, BUZZER_PIN);	
@@ -225,6 +246,7 @@ void GPIO_init(void)
 	// Init charge state
 	gpio_mode_set(CHARGE_STATE_PORT, GPIO_MODE_INPUT, GPIO_PUPD_PULLUP, CHARGE_STATE_PIN);
 #endif
+*/
 }
 	
 //----------------------------------------------------------------------------
@@ -271,27 +293,29 @@ void PWM_init(void)
 	timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, 0);
 	
 	// Set up the output channel parameter struct
-	timerBldc_oc_parameter_struct.ocpolarity 		= TIMER_OC_POLARITY_HIGH;
+	timerBldc_oc_parameter_struct.ocpolarity    = TIMER_OC_POLARITY_HIGH;
 	timerBldc_oc_parameter_struct.ocnpolarity 	= TIMER_OCN_POLARITY_LOW;
 	timerBldc_oc_parameter_struct.ocidlestate 	= TIMER_OC_IDLE_STATE_LOW;
 	timerBldc_oc_parameter_struct.ocnidlestate 	= TIMER_OCN_IDLE_STATE_HIGH;
 	
 	// Configure all three output channels with the output channel parameter struct
 	timer_channel_output_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, &timerBldc_oc_parameter_struct);
-  timer_channel_output_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, &timerBldc_oc_parameter_struct);
+	timer_channel_output_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, &timerBldc_oc_parameter_struct);
 	timer_channel_output_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, &timerBldc_oc_parameter_struct);
 
+	#ifdef TIMER_BLDC_EMERGENCY_SHUTDOWN_PIN
 	// Set up the break parameter struct
 	timerBldc_break_parameter_struct.runoffstate			= TIMER_ROS_STATE_ENABLE;
 	timerBldc_break_parameter_struct.ideloffstate 		= TIMER_IOS_STATE_DISABLE;
 	timerBldc_break_parameter_struct.protectmode			= TIMER_CCHP_PROT_OFF;
 	timerBldc_break_parameter_struct.deadtime 				= DEAD_TIME;
 	timerBldc_break_parameter_struct.breakstate				= TIMER_BREAK_ENABLE;
-	timerBldc_break_parameter_struct.breakpolarity		= TIMER_BREAK_POLARITY_LOW;
+	timerBldc_break_parameter_struct.breakpolarity		= TIMER_BLDC_EMERGENCY_SHUTDOWN_POLARITY;
 	timerBldc_break_parameter_struct.outputautostate 	= TIMER_OUTAUTO_ENABLE;
 	
 	// Configure the timer with the break parameter struct
 	timer_break_config(TIMER_BLDC, &timerBldc_break_parameter_struct);
+	#endif
 
 	// Disable until all channels are set for PWM output
 	timer_disable(TIMER_BLDC);
@@ -350,14 +374,16 @@ void ADC_init(void)
 	dma_interrupt_enable(DMA_CH0, DMA_CHXCTL_FTFIE);
 	
 	// At least clear number of remaining data to be transferred by the DMA 
-	dma_transfer_number_config(DMA_CH0, 2);
+	dma_transfer_number_config(DMA_CH0, 4);
 	
 	// Enable DMA channel 0
 	dma_channel_enable(DMA_CH0);
 	
-	adc_channel_length_config(ADC_REGULAR_CHANNEL, 2);
+	adc_channel_length_config(ADC_REGULAR_CHANNEL, 4);
 	adc_regular_channel_config(0, VBATT_CHANNEL, ADC_SAMPLETIME_13POINT5);
 	adc_regular_channel_config(1, CURRENT_DC_CHANNEL, ADC_SAMPLETIME_13POINT5);
+	adc_regular_channel_config(2, PHASE_A_CHANNEL, ADC_SAMPLETIME_13POINT5);
+ 	adc_regular_channel_config(3, PHASE_B_CHANNEL, ADC_SAMPLETIME_13POINT5);
 	adc_data_alignment_config(ADC_DATAALIGN_RIGHT);
 	
 	// Set trigger of ADC
@@ -385,113 +411,96 @@ void ADC_init(void)
 }
 
 //----------------------------------------------------------------------------
-// Initializes the usart master slave
+// Initializes the USART
 //----------------------------------------------------------------------------
-void USART_MasterSlave_init(void)
-{
-	// Enable ADC and DMA clock
-	rcu_periph_clock_enable(RCU_USART1);
+
+extern uint8_t USART0_RX_Buffer;
+extern uint8_t USART1_RX_Buffer;
+
+void usart_init(uint32_t usart, uint32_t baud) {
+
+	uint32_t periph_addr;
+	IRQn_Type irq_num;
+
+	dma_channel_enum tx_dma;
+
+	dma_channel_enum rx_dma;
+	uint8_t* rx_buffer; 
+	uint32_t rx_size; 
+
 	rcu_periph_clock_enable(RCU_DMA);
-	
-	// Init USART for 115200 baud, 8N1
-	usart_baudrate_set(USART_MASTERSLAVE, 115200);
-	usart_parity_config(USART_MASTERSLAVE, USART_PM_NONE);
-	usart_word_length_set(USART_MASTERSLAVE, USART_WL_8BIT);
-	usart_stop_bit_set(USART_MASTERSLAVE, USART_STB_1BIT);
-	usart_oversample_config(USART_MASTERSLAVE, USART_OVSMOD_16);
-	
-	// Enable both transmitter and receiver
-	usart_transmit_config(USART_MASTERSLAVE, USART_TRANSMIT_ENABLE);
-	usart_receive_config(USART_MASTERSLAVE, USART_RECEIVE_ENABLE);
-	
-	// Enable USART
-	usart_enable(USART_MASTERSLAVE);
-	
-	// Interrupt channel 3/4 enable
-	nvic_irq_enable(DMA_Channel3_4_IRQn, 2, 0);
-	
-	// Initialize DMA channel 4 for USART_SLAVE RX
-	dma_deinit(DMA_CH4);
-	dma_init_struct_usart.direction = DMA_PERIPHERAL_TO_MEMORY;
-	dma_init_struct_usart.memory_addr = (uint32_t)usartMasterSlave_rx_buf;
-	dma_init_struct_usart.memory_inc = DMA_MEMORY_INCREASE_ENABLE;
-	dma_init_struct_usart.memory_width = DMA_MEMORY_WIDTH_8BIT;
-	dma_init_struct_usart.number = USART_MASTERSLAVE_RX_BUFFERSIZE;
-	dma_init_struct_usart.periph_addr = USART_MASTERSLAVE_DATA_RX_ADDRESS;
-	dma_init_struct_usart.periph_inc = DMA_PERIPH_INCREASE_DISABLE;
-	dma_init_struct_usart.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
-	dma_init_struct_usart.priority = DMA_PRIORITY_ULTRA_HIGH;
-	dma_init(DMA_CH4, dma_init_struct_usart);
-	
-	// Configure DMA mode
-	dma_circulation_enable(DMA_CH4);
-	dma_memory_to_memory_disable(DMA_CH4);
+	if (usart == USART0) {
+		rcu_periph_clock_enable(RCU_USART0);
+		periph_addr = 0x40013824;
+		irq_num = USART0_IRQn;
+		tx_dma = DMA_CH1;
+		rx_dma = DMA_CH2;
+		rx_buffer = &USART0_RX_Buffer;
+		rx_size = USART0_RX_SIZE; 
+	} else /* if (usart == USART1) */ {
+		rcu_periph_clock_enable(RCU_USART1);
+		periph_addr = 0x40004424;
+		irq_num = USART1_IRQn;
+		tx_dma = DMA_CH3;
+		rx_dma = DMA_CH4;
+		rx_buffer = &USART1_RX_Buffer;
+		rx_size = USART1_RX_SIZE; 
+	}
 
-	// USART DMA enable for transmission and receive
-	usart_dma_receive_config(USART_MASTERSLAVE, USART_DENR_ENABLE);
-	
-	// Enable DMA transfer complete interrupt
-	dma_interrupt_enable(DMA_CH4, DMA_CHXCTL_FTFIE);
-	
-	// At least clear number of remaining data to be transferred by the DMA 
-	dma_transfer_number_config(DMA_CH4, 1);
-	
-	// Enable dma receive channel
-	dma_channel_enable(DMA_CH4);
-}
+	/* USART configure */
+	usart_deinit(usart);
+	usart_baudrate_set(usart, baud);
+	usart_word_length_set(usart, USART_WL_8BIT);
+	usart_stop_bit_set(usart, USART_STB_1BIT);
+	usart_parity_config(usart, USART_PM_NONE);
+	usart_hardware_flow_rts_config(usart, USART_RTS_DISABLE);
+	usart_hardware_flow_cts_config(usart, USART_CTS_DISABLE);
+	usart_receive_config(usart, USART_RECEIVE_ENABLE);
+	usart_transmit_config(usart, USART_TRANSMIT_ENABLE);
+	usart_enable(usart);
 
-//----------------------------------------------------------------------------
-// Initializes the usart steer/bluetooth
-//----------------------------------------------------------------------------
-void USART_Steer_COM_init(void)
-{
-		// Enable ADC and DMA clock
-	rcu_periph_clock_enable(RCU_USART0);
-	rcu_periph_clock_enable(RCU_DMA);
+	#if USART_TX_DMA
+	/* Initialize TX DMA */					
+	dma_deinit(tx_dma);
+	dma_parameter_struct dma_init_usart_tx;
+	dma_init_usart_tx.direction = DMA_MEMORY_TO_PERIPHERAL;
+	// dma_init_usart_tx.memory_addr = (uint32_t)tx_buffer;
+	dma_init_usart_tx.memory_inc = DMA_MEMORY_INCREASE_ENABLE;
+	dma_init_usart_tx.memory_width = DMA_MEMORY_WIDTH_8BIT;
+	// dma_init_usart_tx.number = tx_size;
+	dma_init_usart_tx.periph_addr = periph_addr;
+	dma_init_usart_tx.periph_inc = DMA_PERIPH_INCREASE_DISABLE;
+	dma_init_usart_tx.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
+	dma_init_usart_tx.priority = DMA_PRIORITY_LOW;
+	dma_init(tx_dma, dma_init_usart_tx);	
+	dma_circulation_disable(tx_dma);
+	dma_memory_to_memory_disable(tx_dma);
+	dma_channel_enable(tx_dma);
+	//\\usart_dma_transmit_config(usart, USART_DENT_ENABLE);
+	#endif
 	
-	// Init USART for 19200 baud, 8N1
-	usart_baudrate_set(USART_STEER_COM, 19200);
-	usart_parity_config(USART_STEER_COM, USART_PM_NONE);
-	usart_word_length_set(USART_STEER_COM, USART_WL_8BIT);
-	usart_stop_bit_set(USART_STEER_COM, USART_STB_1BIT);
-	usart_oversample_config(USART_STEER_COM, USART_OVSMOD_16);
-	
-	// Enable both transmitter and receiver
-	usart_transmit_config(USART_STEER_COM, USART_TRANSMIT_ENABLE);
-	usart_receive_config(USART_STEER_COM, USART_RECEIVE_ENABLE);
-	
-	// Enable USART
-	usart_enable(USART_STEER_COM);
-	
-	// Interrupt channel 1/2 enable
-	nvic_irq_enable(DMA_Channel1_2_IRQn, 2, 0);
-	
-	// Initialize DMA channel 2 for USART_STEER_COM RX
-	dma_deinit(DMA_CH2);
-	dma_init_struct_usart.direction = DMA_PERIPHERAL_TO_MEMORY;
-	dma_init_struct_usart.memory_addr = (uint32_t)usartSteer_COM_rx_buf;
-	dma_init_struct_usart.memory_inc = DMA_MEMORY_INCREASE_ENABLE;
-	dma_init_struct_usart.memory_width = DMA_MEMORY_WIDTH_8BIT;
-	dma_init_struct_usart.number = USART_STEER_COM_RX_BUFFERSIZE;
-	dma_init_struct_usart.periph_addr = USART_STEER_COM_DATA_RX_ADDRESS;
-	dma_init_struct_usart.periph_inc = DMA_PERIPH_INCREASE_DISABLE;
-	dma_init_struct_usart.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
-	dma_init_struct_usart.priority = DMA_PRIORITY_ULTRA_HIGH;
-	dma_init(DMA_CH2, dma_init_struct_usart);
-	
-	// Configure DMA mode
-	dma_circulation_enable(DMA_CH2);
-	dma_memory_to_memory_disable(DMA_CH2);
+	/* Initialize RX DMA */					
+	#if USART_RX_DMA
+	dma_deinit(rx_dma);
+	dma_parameter_struct dma_init_usart_rx;
+	dma_init_usart_rx.direction = DMA_PERIPHERAL_TO_MEMORY;
+	dma_init_usart_rx.memory_addr = (uint32_t)rx_buffer;
+	dma_init_usart_rx.memory_inc = DMA_MEMORY_INCREASE_ENABLE;
+	dma_init_usart_rx.memory_width = DMA_MEMORY_WIDTH_8BIT;
+	dma_init_usart_rx.number = rx_size;
+	dma_init_usart_rx.periph_addr = periph_addr;
+	dma_init_usart_rx.periph_inc = DMA_PERIPH_INCREASE_DISABLE;
+	dma_init_usart_rx.periph_width = DMA_PERIPHERAL_WIDTH_8BIT;
+	dma_init_usart_rx.priority = DMA_PRIORITY_LOW;
+	dma_init(rx_dma, dma_init_usart_rx);
+	dma_circulation_enable(rx_dma);
+	dma_memory_to_memory_disable(rx_dma);
+	dma_channel_enable(rx_dma);
+	usart_dma_receive_config(usart, USART_DENR_ENABLE);
+	usart_interrupt_enable(usart, USART_INT_FLAG_IDLE);
+	#else
+	usart_interrupt_enable(usart, USART_INT_RBNE);			
+	#endif
 
-	// USART DMA enable for transmission and receive
-	usart_dma_receive_config(USART_STEER_COM, USART_DENR_ENABLE);
-	
-	// Enable DMA transfer complete interrupt
-	dma_interrupt_enable(DMA_CH2, DMA_CHXCTL_FTFIE);
-	
-	// At least clear number of remaining data to be transferred by the DMA 
-	dma_transfer_number_config(DMA_CH2, 1);
-	
-	// Enable dma receive channel
-	dma_channel_enable(DMA_CH2);
+	nvic_irq_enable(irq_num, 1, 0);
 }

@@ -72,13 +72,8 @@ void PWM_init(void);
 void ADC_init(void);
 
 //----------------------------------------------------------------------------
-// Initializes the usart master slave
+// Initializes USART
 //----------------------------------------------------------------------------
-void USART_MasterSlave_init(void);
-
-//----------------------------------------------------------------------------
-// Initializes the steer/bluetooth usart
-//----------------------------------------------------------------------------
-void USART_Steer_COM_init(void);
+void usart_init(uint32_t usart, uint32_t baud);
 
 #endif

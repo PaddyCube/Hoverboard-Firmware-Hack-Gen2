@@ -28,23 +28,28 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#define ARM_MATH_CM3
 
-#include "gd32f1x0.h"
-
-#include "../Inc/setup.h"
-#include "../Inc/defines.h"
-#include "../Inc/config.h"
-#include "../Inc/it.h"
-#include "../Inc/bldc.h"
-#include "../Inc/commsMasterSlave.h"
-#include "../Inc/commsSteering.h"
-#include "../Inc/commsBluetooth.h"
 #include "stdio.h"
 #include "stdlib.h"
 #include "string.h"
 #include <math.h>     
+#define ARM_MATH_CM3
 #include "arm_math.h" 
+
+#include "gd32f1x0.h"
+
+#include "setup.h"
+#include "defines.h"
+#include "config.h"
+#include "debug.h"
+#include "it.h"
+#include "bldc.h"
+#include "pid.h"
+#include "cli.h"
+#include "utils.h"
+
+#include "steerAngle.h" 
+
 
 #ifdef MASTER
 int32_t steer = 0; 												// global variable for steering. -1000 to 1000
@@ -65,196 +70,49 @@ extern FlagStatus timedOut;								// Timeoutvariable set by timeout timer
 uint32_t inactivity_timeout_counter = 0;	// Inactivity counter
 uint32_t steerCounter = 0;								// Steer counter for setting update rate
 
-void ShowBatteryState(uint32_t pin);
+typedef enum {GREEN, ORANGE, RED} battery_state_t;
+void ShowBatteryState(battery_state_t state);
 void BeepsBackwards(FlagStatus beepsBackwards);
 void ShutOff(void);
 #endif
 
-const float lookUpTableAngle[181] =  
-{
-  -1,
-  -0.937202577,
-  -0.878193767,
-  -0.822607884,
-  -0.770124422,
-  -0.720461266,
-  -0.673369096,
-  -0.628626737,
-  -0.58603728,
-  -0.545424828,
-  -0.506631749,
-  -0.46951635,
-  -0.433950895,
-  -0.399819915,
-  -0.367018754,
-  -0.335452314,
-  -0.30503398,
-  -0.275684674,
-  -0.24733204,
-  -0.219909731,
-  -0.193356783,
-  -0.167617063,
-  -0.142638788,
-  -0.118374098,
-  -0.094778672,
-  -0.071811398,
-  -0.049434068,
-  -0.027611115,
-  -0.006309372,
-  0.014502141,
-  0.03485241,
-  0.054768601,
-  0.074276213,
-  0.093399224,
-  0.112160212,
-  0.130580478,
-  0.148680146,
-  0.166478264,
-  0.183992885,
-  0.201241154,
-  0.218239378,
-  0.235003093,
-  0.251547129,
-  0.267885663,
-  0.284032276,
-  0.3,
-  0.315801365,
-  0.331448439,
-  0.34695287,
-  0.362325923,
-  0.377578512,
-  0.392721236,
-  0.407764409,
-  0.422718089,
-  0.437592106,
-  0.45239609,
-  0.467139493,
-  0.48183162,
-  0.496481645,
-  0.511098642,
-  0.5256916,
-  0.540269454,
-  0.554841097,
-  0.569415411,
-  0.584001283,
-  0.598607627,
-  0.613243408,
-  0.627917665,
-  0.642639528,
-  0.657418247,
-  0.672263213,
-  0.687183982,
-  0.702190301,
-  0.717292134,
-  0.732499689,
-  0.747823448,
-  0.763274197,
-  0.778863056,
-  0.794601516,
-  0.810501473,
-  0.826575268,
-  0.842835728,
-  0.859296209,
-  0.875970644,
-  0.892873598,
-  0.910020317,
-  0.927426794,
-  0.94510983,
-  0.963087109,
-  0.981377271,
-  1,
-  1.018976116,
-  1.038327677,
-  1.058078086,
-  1.07825222,
-  1.098876565,
-  1.119979359,
-  1.141590767,
-  1.163743061,
-  1.186470823,
-  1.209811179,
-  1.23380405,
-  1.258492439,
-  1.283922754,
-  1.310145166,
-  1.33721402,
-  1.365188293,
-  1.394132116,
-  1.42411537,
-  1.455214362,
-  1.487512601,
-  1.521101681,
-  1.556082309,
-  1.592565485,
-  1.630673867,
-  1.670543366,
-  1.712325006,
-  1.7561871,
-  1.802317825,
-  1.85092826,
-  1.902255998,
-  1.956569473,
-  2.014173151,
-  2.075413814,
-  2.140688197,
-  2.210452351,
-  2.28523318,
-  2.365642792,
-  2.452396478,
-  2.546335439,
-  2.648455802,
-  2.75994605,
-  2.882235846,
-  3.01706052,
-  3.166547428,
-  3.333333333,
-  3.520726642,
-  3.732935875,
-  3.97539819,
-  4.255263139,
-  4.582124498,
-  4.96916252,
-  5.434992778,
-  6.006790189,
-  6.72584757,
-  7.658112588,
-  8.915817681,
-  10.70672711,
-  13.46326037,
-  18.25863694,
-  28.69242032,
-  68.95533643,
-  -158.4943784,
-  -36.21729907,
-  -20.22896451,
-  -13.92536607,
-  -10.55089693,
-  -8.447794056,
-  -7.010715755,
-  -5.965979741,
-  -5.171786508,
-  -4.547320366,
-  -4.043147824,
-  -3.62733258,
-  -3.278323283,
-  -2.981049637,
-  -2.72465641,
-  -2.501126036,
-  -2.304408198,
-  -2.129851283,
-  -1.973820239,
-  -1.833433222,
-  -1.706376086,
-  -1.590769119,
-  -1.485069639,
-  -1.387999671,
-  -1.29849148,
-  -1.21564602,
-  -1.138700863,
-  -1.067005175,
-  -1
-};
+uint32_t last_millis = 0;
 
+
+void watchdogReset() {
+    fwdgt_counter_reload();
+}
+
+void loop() {
+  int n = 0;
+	while(1) {
+    uint32_t now = millis();
+    if (now - last_millis > 10) {
+        last_millis = now;
+        //gpio_bit_write(LED_X1_2_PORT, LED_X1_2_PIN, n++ & 1);
+        watchdogReset();
+        /*
+        debug_printf("EN:%d | I:%d (%d) [%d %d] U:%d (%d) | Pos: %d %d Ang:%d S:%d (%d)| PWM: %d  (%d %d %d) | PID: %f %f\n\r", 
+        bldc_enableFin, curL_DC, offset_current_dc, curL_phaA, curL_phaB, ((int32_t)batVoltage * BAT_CALIB_REAL_VOLTAGE) / BAT_CALIB_ADC, batVoltage, wheel_pos, odom_l, wheel_angle, wheel_speed_rpm_filtered>>8, wheel_speed_rpm>>8, pwml, ul, vl, wl,
+        angle_PID_error_old, angle_set_point_old);
+        */
+        //current_sp, shaft_velocity_sp, shaft_angle_sp, shaft_angle);
+        //voltage.d, voltage.q, current.d, current.q);
+
+/*
+        debug_printf("EN:%d | PWM:%d | Pos: %d %d Ang:%d S:%d (%d) | PID: set: ",
+        bldc_enableFin, pwml, wheel_pos, odom_l, wheel_angle, wheel_speed_rpm_filtered>>8, wheel_speed_rpm>>8);
+        char buffer[64];
+        f2s(buffer, speedPid.set_point, 1); debug_print(buffer); debug_print(" int:");
+        f2s(buffer, speedPid.integral, 1); debug_print(buffer); debug_print(" err:");
+        f2s(buffer, speedPid.last_error, 3); debug_print(buffer); debug_print("\n");
+        */
+    }
+    pidControllerRun();
+    cliRun(&master_slave_cli);
+  }
+
+}
 
 //----------------------------------------------------------------------------
 // MAIN function
@@ -280,28 +138,31 @@ int main (void)
 	//SystemClock_Config();
   SystemCoreClockUpdate();
   SysTick_Config(SystemCoreClock / 100);
-	
-	// Init watchdog
+
+  // Init watchdog
 	if (Watchdog_init() == ERROR)
 	{
 		// If an error accours with watchdog initialization do not start device
 		while(1);
 	}
 	
+  BLDC_Init();
+
 	// Init Interrupts
 	Interrupt_init();
 	
 	// Init timeout timer
 	TimeoutTimer_init();
-	
+
 	// Init GPIOs
 	GPIO_init();
-	
+
 	// Activate self hold direct after GPIO-init
-	gpio_bit_write(SELF_HOLD_PORT, SELF_HOLD_PIN, SET);
+	// gpio_bit_write(SELF_HOLD_PORT, SELF_HOLD_PIN, SET);
 
 	// Init usart master slave
-	USART_MasterSlave_init();
+	//USART_MasterSlave_init();
+    usart_init(USART1, 115200);
 	
 	// Init ADC
 	ADC_init();
@@ -309,13 +170,72 @@ int main (void)
 	// Init PWM
 	PWM_init();
 	
+
+
 	// Device has 1,6 seconds to do all the initialization
 	// afterwards watchdog will be fired
 	fwdgt_counter_reload();
 
 	// Init usart steer/bluetooth
-	USART_Steer_COM_init();
+	//USART_Steer_COM_init();
 
+
+	 // gpio_bit_write(LED_X2_GREEN_PORT, LED_X2_GREEN_PIN, SET);
+
+		// Enable channel output
+		setBldcEnable(SET);
+    pwmMaster = CLAMP(400, -1000, 1000);
+		setBldcPWM(pwmMaster);
+
+
+    #if 1
+    anglePid.set_point = 360*10;
+    // speedPid.set_point = 150.0;
+    target_pwm = 500;
+    control_type = CT_ANGLE;
+    #endif
+
+    loop();
+    
+    /*
+  while(1) {
+    gpio_bit_write(LED_X2_GREEN_PORT, LED_X2_GREEN_PIN, SET);
+    Delay(10);
+    gpio_bit_write(LED_X2_GREEN_PORT, LED_X2_GREEN_PIN, RESET);
+    Delay(10);
+    fwdgt_counter_reload();
+  }
+*/
+  char tbuffer[256];
+  uint8_t led_state = 0;
+  int n;
+	while(1) {
+    DEBUG_println(FST("BLDC start!\n"));
+    //gpio_bit_write(LED_X1_2_PORT, LED_X1_2_PIN, SET);
+	  // SendBuffer(USART_STEER_COM, "Hello 0123456789!\n\r", 18);
+    //SendBuffer(USART_MASTERSLAVE, "HELLO 0123456789!\n\r", 18);
+/*
+    n = sprintf(tbuffer, "EN:%d | Hall: %d / %d | BLDC: %d (%d %d %d) | Int: %d | U=%d I=%d Speed=%d\n\r", 
+    bldc_enable, hall, pos, bldc_outputFilterPwm, hb_y, hb_b, hb_g, bldc_int_cnt, (int)(batteryVoltage*1000.0), (int)(currentDC*1000.0), (int)(realSpeed*1000.0));
+    SendBuffer(USART_MASTERSLAVE, tbuffer, n);
+*/
+    // TIMER_CCHP(TIMER_BLDC) |= 0x8000;
+    /*
+    n = sprintf(tbuffer, "EN:%d | I:%d (%d) [%d %d] U:%d (%d) | Pos: %d %d Ang:%d S:%d (%d)| PWM: %d  (%d %d %d) | PWM: %X\n\r", 
+      bldc_enableFin, curL_DC, offset_current_dc, curL_phaA, curL_phaB, ((int32_t)batVoltage * BAT_CALIB_REAL_VOLTAGE) / BAT_CALIB_ADC, batVoltage, wheel_pos, odom_l, wheel_angle, wheel_speed_rpm_filtered>>8, wheel_speed_rpm>>8, pwml, ul, vl, wl,
+      TIMER_CCHP(TIMER_BLDC)); // Bad: 583C  Good: D83C (POEN bit 15 should be high)
+    SendBuffer(USART_MASTERSLAVE, tbuffer, n);
+    */
+    if (wheel_angle > 360*10) {
+     		setBldcPWM(0); 
+    }
+    fwdgt_counter_reload();
+    // gpio_bit_write(LED_X2_GREEN_PORT, LED_X2_GREEN_PIN, led_state & 1);
+    led_state++;
+		//Delay(DELAY_IN_MAIN_LOOP);
+    Delay(10);
+  }
+/*
 #ifdef MASTER
 	// Startup-Sound
 	for (; index >= 0; index--)
@@ -332,6 +252,7 @@ int main (void)
 		fwdgt_counter_reload();
 	}
 #endif
+*/
 
   while(1)
 	{
@@ -368,7 +289,7 @@ int main (void)
 		}
 		
 		// Read charge state
-		chargeStateLowActive = gpio_input_bit_get(CHARGE_STATE_PORT, CHARGE_STATE_PIN);
+		// chargeStateLowActive = gpio_input_bit_get(CHARGE_STATE_PORT, CHARGE_STATE_PIN);
 		
 		// Enable is depending on charger is connected or not
 		enable = chargeStateLowActive;
@@ -396,7 +317,7 @@ int main (void)
 		}
 		
     // Set output
-		SetPWM(pwmMaster);
+		setBldcPWM(pwmMaster);
 		SendSlave(-pwmSlave, enableSlave, RESET, chargeStateLowActive, sendSlaveIdentifier, sendSlaveValue);
 		
 		// Increment identifier
@@ -410,7 +331,7 @@ int main (void)
     if (batteryVoltage > BAT_LOW_LVL1)
 		{
 			// Show green battery light
-			ShowBatteryState(LED_GREEN);
+			ShowBatteryState(GREEN);
 			
 			// Beeps backwards
 			BeepsBackwards(beepsBackwards);
@@ -419,7 +340,7 @@ int main (void)
     else if (batteryVoltage > BAT_LOW_LVL2 && batteryVoltage < BAT_LOW_LVL1)
 		{
 			// Show orange battery light
-			ShowBatteryState(LED_ORANGE);
+			ShowBatteryState(ORANGE);
 			
       buzzerFreq = 5;
       buzzerPattern = 8;
@@ -428,7 +349,7 @@ int main (void)
 		else if  (batteryVoltage > BAT_LOW_DEAD && batteryVoltage < BAT_LOW_LVL2)
 		{
 			// Show red battery light
-			ShowBatteryState(LED_RED);
+			ShowBatteryState(RED);
 			
       buzzerFreq = 5;
       buzzerPattern = 1;
@@ -498,7 +419,7 @@ void ShutOff(void)
 	
 	// Set pwm and enable to off
 	SetEnable(RESET);
-	SetPWM(0);
+	setBldcPWM(0);
 	
 	gpio_bit_write(SELF_HOLD_PORT, SELF_HOLD_PIN, RESET);
 	while(1)
@@ -511,11 +432,24 @@ void ShutOff(void)
 //----------------------------------------------------------------------------
 // Shows the battery state on the LEDs
 //----------------------------------------------------------------------------
-void ShowBatteryState(uint32_t pin)
+void ShowBatteryState(battery_state_t state)
 {
-	gpio_bit_write(LED_GREEN_PORT, LED_GREEN, pin == LED_GREEN ? SET : RESET);
-	gpio_bit_write(LED_ORANGE_PORT, LED_ORANGE, pin == LED_ORANGE ? SET : RESET);
-	gpio_bit_write(LED_RED_PORT, LED_RED, pin == LED_RED ? SET : RESET);
+  switch (state) {
+    case GREEN:
+	    gpio_bit_write(LED_X2_1_PORT, LED_X2_1_PIN, SET);
+	    gpio_bit_write(LED_X2_1_PORT, LED_X2_2_PIN, RESET);
+      break; 
+
+    case ORANGE:
+	    gpio_bit_write(LED_X2_1_PORT, LED_X2_1_PIN, SET);
+	    gpio_bit_write(LED_X2_1_PORT, LED_X2_2_PIN, SET);
+      break; 
+
+    case RED:
+	    gpio_bit_write(LED_X2_1_PORT, LED_X2_1_PIN, RESET);
+	    gpio_bit_write(LED_X2_1_PORT, LED_X2_2_PIN, SET);
+      break; 
+  }
 }
 
 //----------------------------------------------------------------------------

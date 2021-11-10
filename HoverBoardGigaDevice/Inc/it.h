@@ -32,7 +32,7 @@
 #define IT_H
 
 #include "gd32f1x0.h"
-#include "../Inc/config.h"
+#include "config.h"
 
 //----------------------------------------------------------------------------
 // Resets the timeout to zero
@@ -42,11 +42,18 @@ void ResetTimeout(void);
 //----------------------------------------------------------------------------
 // Returns number of milliseconds since system start
 //----------------------------------------------------------------------------
-uint32_t millis( void );
+uint32_t millis(void);
 
 //----------------------------------------------------------------------------
 // Delays number of tick Systicks (happens every 10 ms)
 //----------------------------------------------------------------------------
 void Delay (uint32_t dlyTicks);
+
+//----------------------------------------------------------------------------
+// Returns number of microseconds since system start (32kHz actual resolution)
+//----------------------------------------------------------------------------
+extern volatile uint32_t ticks_32khz;
+uint32_t micros();
+
 
 #endif

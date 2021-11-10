@@ -32,21 +32,41 @@
 #define BLDC_H
 
 #include "gd32f1x0.h"
-#include "../Inc/config.h"
+#include "config.h"
+
 
 //----------------------------------------------------------------------------
 // Set motor enable
 //----------------------------------------------------------------------------
-void SetEnable(FlagStatus setEnable);
+void setBldcEnable(FlagStatus setEnable);
 
 //----------------------------------------------------------------------------
 // Set pwm -1000 to 1000
 //----------------------------------------------------------------------------
-void SetPWM(int16_t setPwm);
+void setBldcPWM(int16_t setPwm);
 
 //----------------------------------------------------------------------------
 // Calculation-Routine for BLDC => calculates with 16kHz
 //----------------------------------------------------------------------------
 void CalculateBLDC(void);
+
+void BLDC_Init(void);
+
+
+extern uint8_t bldc_enable;
+extern uint8_t bldc_enableFin;
+extern volatile int pwml;
+extern int ul, vl, wl;
+extern int wheel_pos;
+extern int16_t batVoltage;
+extern int16_t curL_DC;
+extern int16_t curL_phaA;
+extern int16_t curL_phaB;
+extern int16_t offset_current_dc;
+extern int16_t odom_l;
+
+extern long wheel_speed_rpm;
+extern long wheel_speed_rpm_filtered;
+extern long wheel_angle;
 
 #endif

@@ -29,20 +29,51 @@
 */
 
 #include "gd32f1x0.h"
+#include "defines.h"
 
 //----------------------------------------------------------------------------
 // Send buffer via USART
 //----------------------------------------------------------------------------
-void SendBuffer(uint32_t usart_periph, uint8_t buffer[], uint8_t length)
-{
-	uint8_t index = 0;
-	
+
+#if USART_TX_DMA
+
+void SendBuffer(uint32_t usart_periph, const uint8_t buffer[], uint8_t length) {
+	if(usart_periph == USART0)
+	{
+		/* Channel disable */
+		dma_channel_disable(DMA_CH1);
+		
+		dma_memory_address_config(DMA_CH1, (uint32_t)buffer);
+		dma_transfer_number_config(DMA_CH1, length);
+		
+		/* enable DMA channel to start send */
+		dma_channel_enable(DMA_CH1);
+	}
+	else if(usart_periph == USART1)
+	{
+		/* Channel disable */
+		dma_channel_disable(DMA_CH3);
+		
+		dma_memory_address_config(DMA_CH3, (uint32_t)buffer);
+		dma_transfer_number_config(DMA_CH3, length);
+		
+		/* enable DMA channel to start send */
+		dma_channel_enable(DMA_CH3);	
+	}
+}
+
+#else
+
+void SendBuffer(uint32_t usart_periph, const uint8_t buffer[], uint8_t length) {
+	uint8_t index = 0;	
 	for(; index < length; index++)
 	{
     usart_data_transmit(usart_periph, buffer[index]);
     while (usart_flag_get(usart_periph, USART_FLAG_TC) == RESET) {}
 	}
 }
+
+#endif
 
 //----------------------------------------------------------------------------
 // Calculate CRC

@@ -1,18 +1,12 @@
 /*
-* This file is part of the hoverboard-firmware-hack-V2 project. The 
-* firmware is used to hack the generation 2 board of the hoverboard.
-* These new hoverboards have no mainboard anymore. They consist of 
-* two Sensorboards which have their own BLDC-Bridge per Motor and an
-* ARM Cortex-M3 processor GD32F130C8.
+* This file implements FOC motor control.
+* This control method offers superior performanace
+* compared to previous cummutation method. The new method features:
+* ► reduced noise and vibrations
+* ► smooth torque output
+* ► improved motor efficiency -> lower energy consumption
 *
-* Copyright (C) 2018 Florian Staeblein
-* Copyright (C) 2018 Jakob Broemauer
-* Copyright (C) 2018 Kai Liebich
-* Copyright (C) 2018 Christoph Lehnert
-*
-* The program is based on the hoverboard project by Niklas Fauth. The 
-* structure was tried to be as similar as possible, so that everyone 
-* could find a better way through the code.
+* Copyright (C) 2019-2020 Emanuel FERU <aerdronix@gmail.com>
 *
 * This program is free software: you can redistribute it and/or modify
 * it under the terms of the GNU General Public License as published by
@@ -28,216 +22,331 @@
 * along with this program.  If not, see <http://www.gnu.org/licenses/>.
 */
 
-#include "gd32f1x0.h"
-#include "../Inc/setup.h"
-#include "../Inc/defines.h"
-#include "../Inc/config.h"
+#include "rtwtypes.h"
+#include "defines.h"
+#include "setup.h"
+#include "config.h"
+//#include "util.h"
 
-// Internal constants
-const int16_t pwm_res = 72000000 / 2 / PWM_FREQ; // = 2000
+// Matlab includes and defines - from auto-code generation
+// ###############################################################################
+#include "bldc.h"
+#include "BLDC_controller.h"           /* Model's header file */
 
-// Global variables for voltage and current
-float batteryVoltage = 40.0;
-float currentDC = 0.0;
-float realSpeed = 0.0;
+extern RT_MODEL *const rtM_Left;
+extern RT_MODEL *const rtM_Right;
 
-// Timeoutvariable set by timeout timer
-extern FlagStatus timedOut;
+extern DW   rtDW_Left;                  /* Observable states */
+extern ExtU rtU_Left;                   /* External inputs */
+extern ExtY rtY_Left;                   /* External outputs */
+extern P    rtP_Left;
 
-// Variables to be set from the main routine
-int16_t bldc_inputFilterPwm = 0;
-FlagStatus bldc_enable = RESET;
+extern DW   rtDW_Right;                 /* Observable states */
+extern ExtU rtU_Right;                  /* External inputs */
+extern ExtY rtY_Right;                  /* External outputs */
+// ###############################################################################
 
-// ADC buffer to be filled by DMA
-adc_buf_t adc_buffer;
+static int16_t pwm_margin;              /* This margin allows to have a window in the PWM signal for proper FOC Phase currents measurement */
 
-// Internal calculation variables
-uint8_t hall_a;
-uint8_t hall_b;
-uint8_t hall_c;
-uint8_t hall;
-uint8_t pos;
-uint8_t lastPos;
-int16_t bldc_outputFilterPwm = 0;
-int32_t filter_reg;
-FlagStatus buzzerToggle = RESET;
-uint8_t buzzerFreq = 0;
-uint8_t buzzerPattern = 0;
-uint16_t buzzerTimer = 0;
-int16_t offsetcount = 0;
-int16_t offsetdc = 2000;
-uint32_t speedCounter = 0;
+extern uint8_t ctrlModReq;
+static int16_t curDC_max = (I_DC_MAX * A2BIT_CONV);
+int16_t curL_phaA = 0, curL_phaB = 0, curL_DC = 0;
+// int16_t curR_phaB = 0, curR_phaC = 0, curR_DC = 0;
 
-//----------------------------------------------------------------------------
-// Commutation table
-//----------------------------------------------------------------------------
-const uint8_t hall_to_pos[8] =
-{
-	// annotation: for example SA=0 means hall sensor pulls SA down to Ground
-  0, // hall position [-] - No function (access from 1-6) 
-  3, // hall position [1] (SA=1, SB=0, SC=0) -> PWM-position 3
-  5, // hall position [2] (SA=0, SB=1, SC=0) -> PWM-position 5
-  4, // hall position [3] (SA=1, SB=1, SC=0) -> PWM-position 4
-  1, // hall position [4] (SA=0, SB=0, SC=1) -> PWM-position 1
-  2, // hall position [5] (SA=1, SB=0, SC=1) -> PWM-position 2
-  6, // hall position [6] (SA=0, SB=1, SC=1) -> PWM-position 6
-  0, // hall position [-] - No function (access from 1-6) 
-};
+volatile int pwml = 0;
+//volatile int pwmr = 0;
 
-//----------------------------------------------------------------------------
-// Block PWM calculation based on position
-//----------------------------------------------------------------------------
-static __INLINE void blockPWM(int pwm, int pwmPos, int *y, int *b, int *g)
-{
-  switch(pwmPos)
-	{
-    case 1:
-      *y = 0;
-      *b = pwm;
-      *g = -pwm;
-      break;
-    case 2:
-      *y = -pwm;
-      *b = pwm;
-      *g = 0;
-      break;
-    case 3:
-      *y = -pwm;
-      *b = 0;
-      *g = pwm;
-      break;
-    case 4:
-      *y = 0;
-      *b = -pwm;
-      *g = pwm;
-      break;
-    case 5:
-      *y = pwm;
-      *b = -pwm;
-      *g = 0;
-      break;
-    case 6:
-      *y = pwm;
-      *b = 0;
-      *g = -pwm;
-      break;
-    default:
-      *y = 0;
-      *b = 0;
-      *g = 0;
-  }
+extern volatile adc_buf_t adc_buffer;
+
+uint8_t buzzerFreq          = 0;
+uint8_t buzzerPattern       = 0;
+uint8_t buzzerCount         = 0;
+volatile uint32_t buzzerTimer = 0;
+static uint8_t  buzzerPrev  = 0;
+static uint8_t  buzzerIdx   = 0;
+
+uint8_t        bldc_enable  = 0;        // initially motors are disabled for SAFETY
+uint8_t        bldc_enableFin  = 0;
+
+static const uint16_t pwm_res  = 64000000 / 2 / PWM_FREQ; // = 2000
+
+static uint16_t offsetcount = 0;
+/*
+static int16_t offsetrlA    = 2000;
+static int16_t offsetrlB    = 2000;
+static int16_t offsetrrB    = 2000;
+static int16_t offsetrrC    = 2000;
+static int16_t offsetdcl    = 2000;
+static int16_t offsetdcr    = 2000;
+*/
+int16_t offset_current_dc    = 2000;
+int16_t offset_v_batt    = 2000;
+int16_t offset_phase_a    = 2000;
+int16_t offset_phase_b    = 2000;
+
+
+int16_t        batVoltage       = (400 * BAT_CELLS * BAT_CALIB_ADC) / BAT_CALIB_REAL_VOLTAGE;
+static int32_t batVoltageFixdt  = (400 * BAT_CELLS * BAT_CALIB_ADC) / BAT_CALIB_REAL_VOLTAGE << 16;  // Fixed-point filter output initialized at 400 V*100/cell = 4 V/cell converted to fixed-point
+
+int16_t odom_l = 0;
+
+static uint16_t wp_l_vorher = 0;
+
+RT_MODEL rtM_Left_;                     /* Real-time model */
+RT_MODEL *const rtM_Left  = &rtM_Left_;
+
+DW       rtDW_Left;                     /* Observable states */
+ExtU     rtU_Left;                      /* External inputs */
+ExtY     rtY_Left;                      /* External outputs */
+
+uint8_t  ctrlModReq    = CTRL_MOD_REQ;  // Final control mode request 
+
+
+extern volatile uint32_t ticks_32khz;
+uint32_t ticks_32khz_old = 0;
+
+int wheel_pos;
+int odom_old = 0;
+long wheel_speed_rpm = 0;
+long wheel_speed_rpm_filtered = 0;
+long wheel_angle = 0;
+int _rpm_delta;
+
+  int ul, vl, wl;
+  // int ur, vr, wr;
+
+void setBldcEnable(FlagStatus state) {
+    bldc_enable = state;
 }
 
-//----------------------------------------------------------------------------
-// Set motor enable
-//----------------------------------------------------------------------------
-void SetEnable(FlagStatus setEnable)
-{
-	bldc_enable = setEnable;
+void setBldcPWM(int16_t power) {
+	pwml = CLAMP(power, -1000, 1000);
 }
 
-//----------------------------------------------------------------------------
-// Set pwm -1000 to 1000
-//----------------------------------------------------------------------------
-void SetPWM(int16_t setPwm)
-{
-	bldc_inputFilterPwm = CLAMP(setPwm, -1000, 1000);
+
+void BLDC_Init(void) {
+  /* Set BLDC controller parameters */ 
+  rtP_Left.b_angleMeasEna       = 0;            // Motor angle input: 0 = estimated angle, 1 = measured angle (e.g. if encoder is available)
+  rtP_Left.z_selPhaCurMeasABC   = 0;            // Left motor measured current phases {Green, Blue} = {iA, iB} -> do NOT change
+  rtP_Left.z_ctrlTypSel         = CTRL_TYP_SEL;
+  rtP_Left.b_diagEna            = DIAG_ENA;
+  rtP_Left.i_max                = (I_MOT_MAX * A2BIT_CONV) << 4;        // fixdt(1,16,4)
+  rtP_Left.n_max                = N_MOT_MAX << 4;                       // fixdt(1,16,4)
+  rtP_Left.b_fieldWeakEna       = FIELD_WEAK_ENA; 
+  rtP_Left.id_fieldWeakMax      = (FIELD_WEAK_MAX * A2BIT_CONV) << 4;   // fixdt(1,16,4)
+  rtP_Left.a_phaAdvMax          = PHASE_ADV_MAX << 4;                   // fixdt(1,16,4)
+  rtP_Left.r_fieldWeakHi        = FIELD_WEAK_HI << 4;                   // fixdt(1,16,4)
+  rtP_Left.r_fieldWeakLo        = FIELD_WEAK_LO << 4;                   // fixdt(1,16,4)
+
+  /* Pack LEFT motor data into RTM */
+  rtM_Left->defaultParam        = &rtP_Left;
+  rtM_Left->dwork               = &rtDW_Left;
+  rtM_Left->inputs              = &rtU_Left;
+  rtM_Left->outputs             = &rtY_Left;
+
+  /* Initialize BLDC controllers */
+  BLDC_controller_initialize(rtM_Left);
 }
 
-//----------------------------------------------------------------------------
-// Calculation-Routine for BLDC => calculates with 16kHz
-//----------------------------------------------------------------------------
-void CalculateBLDC(void)
-{
-	int y = 0;     // yellow = phase A
-	int b = 0;     // blue   = phase B
-	int g = 0;     // green  = phase C
-	
-	// Calibrate ADC offsets for the first 1000 cycles
-  if (offsetcount < 1000)
-	{  
-    offsetcount++;
-    offsetdc = (adc_buffer.current_dc + offsetdc) / 2;
+
+/* =========================== Filtering Functions =========================== */
+
+  /* Low pass filter fixed-point 32 bits: fixdt(1,32,16)
+  * Max:  32767.99998474121
+  * Min: -32768
+  * Res:  1.52587890625e-05
+  * 
+  * Inputs:       u     = int16 or int32
+  * Outputs:      y     = fixdt(1,32,16)
+  * Parameters:   coef  = fixdt(0,16,16) = [0,65535U]
+  * 
+  * Example: 
+  * If coef = 0.8 (in floating point), then coef = 0.8 * 2^16 = 52429 (in fixed-point)
+  * filtLowPass16(u, 52429, &y);
+  * yint = (int16_t)(y >> 16); // the integer output is the fixed-point ouput shifted by 16 bits
+  */
+void filtLowPass32(int32_t u, uint16_t coef, int32_t *y) {
+  int64_t tmp;  
+  tmp = ((int64_t)((u << 4) - (*y >> 12)) * coef) >> 4;
+  tmp = CLAMP(tmp, -2147483648LL, 2147483647LL);  // Overflow protection: 2147483647LL = 2^31 - 1
+  *y = (int32_t)tmp + (*y);
+}
+
+
+int16_t modulo(int16_t m, int16_t rest_classes){
+  return (((m % rest_classes) + rest_classes) %rest_classes);
+}
+
+int16_t up_or_down(int16_t vorher, int16_t nachher){
+  uint16_t up_down[6] = {0,-1,-2,0,2,1};
+  //uint16_t mod_diff =  (((vorher - nachher) % 6) + 6) % 6;
+  
+  return up_down[modulo(vorher-nachher, 6)];
+}
+
+
+
+void calculateRPM(int delta) {
+  uint32_t timer_value = ticks_32khz;
+  int32_t dt = (timer_value - ticks_32khz_old);
+  if (ticks_32khz_old && dt > 32000) {
+    // DEBUG_println(FST("Rotation Stopped"));
+    wheel_speed_rpm = 0;
+    wheel_speed_rpm_filtered = 0;
+    ticks_32khz_old = 0;
     return;
   }
-	
-	// Calculate battery voltage every 100 cycles
-  if (buzzerTimer % 100 == 0)
-	{
-    batteryVoltage = batteryVoltage * 0.999 + ((float)adc_buffer.v_batt * ADC_BATTERY_VOLT) * 0.001;
-  }
-	
-#ifdef MASTER
-	// Create square wave for buzzer
-  buzzerTimer++;
-  if (buzzerFreq != 0 && (buzzerTimer / 5000) % (buzzerPattern + 1) == 0)
-	{
-    if (buzzerTimer % buzzerFreq == 0)
-		{
-			buzzerToggle = buzzerToggle == RESET ? SET : RESET; // toggle variable
-		  gpio_bit_write(BUZZER_PORT, BUZZER_PIN, buzzerToggle);
+
+  _rpm_delta += delta;
+  if (_rpm_delta >= 18 || _rpm_delta <= -18) { 
+
+    if (ticks_32khz_old == 0) {
+      ticks_32khz_old = timer_value;
+      _rpm_delta = 0;
+      //DEBUG_println(FST("Rotation Started"));
+      return;
     }
-  }
-	else
-	{
-		gpio_bit_write(BUZZER_PORT, BUZZER_PIN, RESET);
-  }
-#endif
-	
-	// Calculate current DC
-	currentDC = ABS((adc_buffer.current_dc - offsetdc) * MOTOR_AMP_CONV_DC_AMP);
-
-  // Disable PWM when current limit is reached (current chopping), enable is not set or timeout is reached
-	if (currentDC > DC_CUR_LIMIT || bldc_enable == RESET || timedOut == SET)
-	{
-		timer_automatic_output_disable(TIMER_BLDC);		
-  }
-	else
-	{
-		timer_automatic_output_enable(TIMER_BLDC);
-  }
-	
-  // Read hall sensors
-	hall_a = gpio_input_bit_get(HALL_A_PORT, HALL_A_PIN);
-  hall_b = gpio_input_bit_get(HALL_B_PORT, HALL_B_PIN);
-	hall_c = gpio_input_bit_get(HALL_C_PORT, HALL_C_PIN);
   
-	// Determine current position based on hall sensors
-  hall = hall_a * 1 + hall_b * 2 + hall_c * 4;
-  pos = hall_to_pos[hall];
-	
-	// Calculate low-pass filter for pwm value
-	filter_reg = filter_reg - (filter_reg >> FILTER_SHIFT) + bldc_inputFilterPwm;
-	bldc_outputFilterPwm = filter_reg >> FILTER_SHIFT;
-	
-  // Update PWM channels based on position y(ellow), b(lue), g(reen)
-  blockPWM(bldc_outputFilterPwm, pos, &y, &b, &g);
-	
-	// Set PWM output (pwm_res/2 is the mean value, setvalue has to be between 10 and pwm_res-10)
-	timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, CLAMP(g + pwm_res / 2, 10, pwm_res-10));
-	timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, CLAMP(b + pwm_res / 2, 10, pwm_res-10));
-	timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, CLAMP(y + pwm_res / 2, 10, pwm_res-10));
-	
-	// Increments with 62.5us
-	if(speedCounter < 4000) // No speed after 250ms
-	{
-		speedCounter++;
-	}
-	
-	// Every time position reaches value 1, one round is performed (rising edge)
-	if (lastPos != 1 && pos == 1)
-	{
-		realSpeed = 1991.81f / (float)speedCounter; //[km/h]
-		speedCounter = 0;
-	}
-	else
-	{
-		if (speedCounter >= 4000)
-		{
-			realSpeed = 0;
-		}
-	}
+    wheel_speed_rpm = (_rpm_delta * (60 * 32000 << 4) / dt / 360) << 4;
+    if (wheel_speed_rpm_filtered == 0) { wheel_speed_rpm_filtered = wheel_speed_rpm; }
+    wheel_speed_rpm_filtered = wheel_speed_rpm_filtered - (wheel_speed_rpm_filtered >> 5) + (wheel_speed_rpm >> 5);
+    ticks_32khz_old = timer_value;
+    _rpm_delta = 0;
+  }
+}
 
-	// Safe last position
-	lastPos = pos;
+// =================================
+// DMA interrupt frequency =~ 16 kHz
+// =================================
+//void DMA1_Channel1_IRQHandler(void) {
+void CalculateBLDC(void) {
+
+  // DMA1->IFCR = DMA_IFCR_CTCIF1;
+  // HAL_GPIO_WritePin(LED_PORT, LED_PIN, 1);
+  // HAL_GPIO_TogglePin(LED_PORT, LED_PIN);
+
+
+  if(offsetcount < 2000) {  // calibrate ADC offsets
+    offsetcount++;
+/*
+    offsetrlA = (adc_buffer.rlA + offsetrlA) / 2;
+    offsetrlB = (adc_buffer.rlB + offsetrlB) / 2;
+    offsetrrB = (adc_buffer.rrB + offsetrrB) / 2;
+    offsetrrC = (adc_buffer.rrC + offsetrrC) / 2;
+    offsetdcl = (adc_buffer.dcl + offsetdcl) / 2;
+    offsetdcr = (adc_buffer.dcr + offsetdcr) / 2;
+*/
+    offset_current_dc = (adc_buffer.current_dc + offset_current_dc) / 2;
+    offset_v_batt = (adc_buffer.v_batt + offset_v_batt) / 2;
+    offset_phase_a = (adc_buffer.phase_a + offset_phase_a) / 2;
+    offset_phase_b = (adc_buffer.phase_b + offset_phase_b) / 2;
+    return;
+  }
+
+  if (buzzerTimer % 1000 == 0) {  // Filter battery voltage at a slower sampling rate
+    filtLowPass32(adc_buffer.v_batt, BAT_FILT_COEF, &batVoltageFixdt);
+    batVoltage = (int16_t)(batVoltageFixdt >> 16);  // convert fixed-point to integer
+  }
+
+  // Get motor currents
+  curL_phaA = (int16_t)(offset_phase_a - adc_buffer.phase_a);
+  curL_phaB = (int16_t)(offset_phase_b - adc_buffer.phase_b);
+  curL_DC   = (int16_t)(offset_current_dc - adc_buffer.current_dc);
+  
+  // Disable PWM when current limit is reached (current chopping)
+  // This is the Level 2 of current protection. The Level 1 should kick in first given by I_MOT_MAX
+  if(ABS(curL_DC) > curDC_max || bldc_enable == 0) {
+  	timer_automatic_output_disable(TIMER_BLDC);		
+  } else {
+  	timer_automatic_output_enable(TIMER_BLDC);
+  }
+
+  // Create square wave for buzzer
+  buzzerTimer++;
+  if (buzzerFreq != 0 && (buzzerTimer / 5000) % (buzzerPattern + 1) == 0) {
+    if (buzzerPrev == 0) {
+      buzzerPrev = 1;
+      if (++buzzerIdx > (buzzerCount + 2)) {    // pause 2 periods
+        buzzerIdx = 1;
+      }
+    }
+    if (buzzerTimer % buzzerFreq == 0 && (buzzerIdx <= buzzerCount || buzzerCount == 0)) {
+      //HAL_GPIO_TogglePin(BUZZER_PORT, BUZZER_PIN);
+    }
+  } else if (buzzerPrev) {
+      //HAL_GPIO_WritePin(BUZZER_PORT, BUZZER_PIN, GPIO_PIN_RESET);
+      buzzerPrev = 0;
+  }
+
+  // Adjust pwm_margin depending on the selected Control Type
+  if (rtP_Left.z_ctrlTypSel == FOC_CTRL) {
+    pwm_margin = 110;
+  } else {
+    pwm_margin = 0;
+  }
+
+  // ############################### MOTOR CONTROL ###############################
+
+  static boolean_T OverrunFlag = false;
+
+  /* Check for overrun */
+  if (OverrunFlag) {
+    return;
+  }
+  OverrunFlag = true;
+
+  /* Make sure to stop BOTH motors in case of an error */
+  bldc_enableFin = bldc_enable && !rtY_Left.z_errCode;
+ 
+  // ========================= LEFT MOTOR ============================ 
+    // Get hall sensors values
+
+    uint8_t hall_ul = !gpio_input_bit_get(HALL_A_PORT, HALL_A_PIN);
+    uint8_t hall_vl = !gpio_input_bit_get(HALL_B_PORT, HALL_B_PIN);
+    uint8_t hall_wl = !gpio_input_bit_get(HALL_C_PORT, HALL_C_PIN);
+
+    /* Set motor inputs here */
+    rtU_Left.b_motEna     = bldc_enableFin;
+    rtU_Left.z_ctrlModReq = ctrlModReq;  
+    rtU_Left.r_inpTgt     = pwml;
+    rtU_Left.b_hallA      = hall_ul;
+    rtU_Left.b_hallB      = hall_vl;
+    rtU_Left.b_hallC      = hall_wl;
+    //rtU_Left.i_phaAB      = curL_phaA;
+    //rtU_Left.i_phaBC      = curL_phaB;
+    //rtU_Left.i_DCLink     = curL_DC;
+    // rtU_Left.a_mechAngle   = ...; // Angle input in DEGREES [0,360] in fixdt(1,16,4) data type. If `angle` is float use `= (int16_t)floor(angle * 16.0F)` If `angle` is integer use `= (int16_t)(angle << 4)`
+    
+    /* Step the controller */
+    BLDC_controller_step(rtM_Left);
+
+    /* Get motor outputs here */
+    ul            = rtY_Left.DC_phaA;
+    vl            = rtY_Left.DC_phaB;
+    wl            = rtY_Left.DC_phaC;
+  // errCodeLeft  = rtY_Left.z_errCode;
+  // motSpeedLeft = rtY_Left.n_mot;
+  // motAngleLeft = rtY_Left.a_elecAngle;
+    uint8_t encoding = (uint8_t)((hall_ul<<2) + (hall_vl<<1) + hall_wl);
+    wheel_pos = rtConstP.vec_hallToPos_Value[encoding];
+
+    int delta = up_or_down(wp_l_vorher, wheel_pos);
+    wp_l_vorher = wheel_pos;
+    odom_l = modulo(odom_l + delta, 9000);
+    wheel_angle += delta * 6; // 60 steps per rotation => 6 degree per step
+    calculateRPM(delta * 6);
+  
+    /* Apply commands */
+	timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_Y, CLAMP(ul + pwm_res / 2, pwm_margin, pwm_res-pwm_margin));
+	timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_B, CLAMP(vl + pwm_res / 2, pwm_margin, pwm_res-pwm_margin));
+  timer_channel_output_pulse_value_config(TIMER_BLDC, TIMER_BLDC_CHANNEL_G, CLAMP(wl + pwm_res / 2, pwm_margin, pwm_res-pwm_margin));
+	
+  // =================================================================
+  
+
+  /* Indicate task complete */
+  OverrunFlag = false;
+ 
+ // ###############################################################################
+
 }

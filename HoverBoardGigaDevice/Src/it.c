@@ -29,27 +29,17 @@
 */
 
 #include "gd32f1x0.h"
-#include "../Inc/it.h"
-#include "../Inc/defines.h"
-#include "../Inc/config.h"
-#include "../Inc/bldc.h"
-#include "../Inc/led.h"
-#include "../Inc/commsMasterSlave.h"
-#include "../Inc/commsSteering.h"
-#include "../Inc/commsBluetooth.h"
+#include "it.h"
+#include "defines.h"
+#include "config.h"
+#include "bldc.h"
+#include "led.h"
+#include "cli.h"
 
 uint32_t msTicks;
 uint32_t timeoutCounter_ms = 0;
 FlagStatus timedOut = SET;
-
-#ifdef SLAVE
-uint32_t hornCounter_ms = 0;
-#endif
-
-extern int32_t steer;
-extern int32_t speed;
-extern FlagStatus activateWeakening;
-extern FlagStatus beepsBackwards;
+volatile uint32_t ticks_32khz = 0;
 
 //----------------------------------------------------------------------------
 // SysTick_Handler
@@ -74,21 +64,14 @@ void ResetTimeout(void)
 //----------------------------------------------------------------------------
 void TIMER13_IRQHandler(void)
 {	
+	//TIMER13_int_cnt++;  // Debug counter
 	if (timeoutCounter_ms > TIMEOUT_MS)
 	{
 		// First timeout reset all process values
 		if (timedOut == RESET)
 		{
-#ifdef MASTER
-			steer = 0;
-			speed = 0;
-			beepsBackwards = RESET;
-#endif
-#ifdef SLAVE
-			SetPWM(0);
-#endif
+			setBldcPWM(0);
 		}
-		
 		timedOut = SET;
 	}
 	else
@@ -124,11 +107,15 @@ void TIMER13_IRQHandler(void)
 //----------------------------------------------------------------------------
 void TIMER0_BRK_UP_TRG_COM_IRQHandler(void)
 {
+	//TIMER0_int_cnt++;  // Debug counter
 	// Start ADC conversion
 	adc_software_trigger_enable(ADC_REGULAR_CHANNEL);
 	
 	// Clear timer update interrupt flag
 	timer_interrupt_flag_clear(TIMER_BLDC, TIMER_INT_UP);
+
+	ticks_32khz++;
+	gpio_bit_write(LED_X1_1_PORT, LED_X1_1_PIN, ticks_32khz & 1);
 }
 
 //----------------------------------------------------------------------------
@@ -138,6 +125,9 @@ void TIMER0_BRK_UP_TRG_COM_IRQHandler(void)
 //----------------------------------------------------------------------------
 void DMA_Channel0_IRQHandler(void)
 {
+    // gpio_bit_write(LED_X1_1_PORT, LED_X1_1_PIN, SET);
+
+	//DMA0_int_cnt++;  // Debug counter
 	// Calculate motor PWMs
 	CalculateBLDC();
 	
@@ -150,6 +140,7 @@ void DMA_Channel0_IRQHandler(void)
 	{
 		dma_interrupt_flag_clear(DMA_CH0, DMA_INT_FLAG_FTF);        
 	}
+    // gpio_bit_write(LED_X1_1_PORT, LED_X1_1_PIN, RESET);
 }
 
 
@@ -162,14 +153,6 @@ void DMA_Channel1_2_IRQHandler(void)
 	// USART steer/bluetooth RX
 	if (dma_interrupt_flag_get(DMA_CH2, DMA_INT_FLAG_FTF))
 	{
-#ifdef MASTER
-		// Update USART steer input mechanism
-		UpdateUSARTSteerInput();
-#endif
-#ifdef SLAVE
-		// Update USART bluetooth input mechanism
-		UpdateUSARTBluetoothInput();
-#endif
 		dma_interrupt_flag_clear(DMA_CH2, DMA_INT_FLAG_FTF);        
 	}
 }
@@ -184,12 +167,66 @@ void DMA_Channel3_4_IRQHandler(void)
 	// USART master slave RX
 	if (dma_interrupt_flag_get(DMA_CH4, DMA_INT_FLAG_FTF))
 	{
-		// Update USART master slave input mechanism
-		UpdateUSARTMasterSlaveInput();
-		
 		dma_interrupt_flag_clear(DMA_CH4, DMA_INT_FLAG_FTF);        
 	}
 }
+
+
+void USART0_IRQHandler(void)
+{
+#if USART_RX_DMA
+	if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_IDLE))
+	{
+		/* clear USART_INT_FLAG_IDLE */
+		usart_interrupt_flag_clear(USART0, USART_INT_FLAG_IDLE);
+		uint16_t bytes = usart_data_receive(USART0);
+		/* disable USART0_RX DMA_Channel */
+		dma_channel_disable(DMA_CH2);    
+		/* reset DMA_Channel CNT */
+		dma_transfer_number_config(DMA_CH2, USART0_RX_SIZE);
+		/* enable USART0_RX DMA_Channel */
+		dma_channel_enable(DMA_CH2);
+	}
+#else	
+	if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_RBNE))
+	{
+		usart_interrupt_flag_clear(USART0,USART_INT_FLAG_RBNE);
+		char c = usart_data_receive(USART0);
+	}
+#endif	
+}
+
+
+void USART1_IRQHandler(void)
+{
+#if USART_RX_DMA	
+	if(RESET != usart_interrupt_flag_get(USART1, USART_INT_FLAG_IDLE))
+	{
+		/* clear USART_INT_FLAG_IDLE */
+		usart_interrupt_flag_clear(USART1, USART_INT_FLAG_IDLE);
+		uint16_t bytes = 1;// usart_data_receive(USART1);
+		uint16_t n = 0;
+		while(n < bytes) {
+			cliReceive(&master_slave_cli, USART1_RX_Buffer[n++]);
+		}
+		/* disable USART1_RX DMA_Channel */
+		dma_channel_disable(DMA_CH4);    
+		/* reset DMA_Channel CNT */
+		dma_transfer_number_config(DMA_CH4, USART1_RX_SIZE);
+		/* enable USART1_RX DMA_Channel */
+		dma_channel_enable(DMA_CH4);
+	}
+#else	
+	if(RESET != usart_interrupt_flag_get(USART1, USART_INT_FLAG_RBNE))
+	{
+		usart_interrupt_flag_clear(USART1, USART_INT_FLAG_RBNE);
+		// USART1_RX_Buffer[0] = usart_data_receive(USART1);
+		cliReceive(&master_slave_cli, usart_data_receive(USART1));
+	}
+#endif	
+}
+
+
 
 //----------------------------------------------------------------------------
 // Returns number of milliseconds since system start
@@ -198,6 +235,15 @@ uint32_t millis()
 {
 	return msTicks;
 }
+
+
+//----------------------------------------------------------------------------
+// Returns number of microseconds since system start (32kHz actual resolution)
+//----------------------------------------------------------------------------
+uint32_t micros() {
+  return (ticks_32khz * 125LL) >> 4;
+}
+
 
 //----------------------------------------------------------------------------
 // Delays number of tick Systicks (happens every 10 ms)
