@@ -37,11 +37,11 @@
 #include "pid.h"
 #include "debug.h"
 
-bool remote_enabled = false;
-uint32_t remote_sent_ts = 0;
-uint8_t remote_seq = 0;
-bool remote_waiting = false;
-uint32_t remote_status_ts = 0;
+bool com_enabled = false;
+uint32_t com_sent_ts = 0;
+uint8_t com_seq = 0;
+bool com_waiting = false;
+uint32_t com_rec_ts = 0;
 
 float remote_set_point = 0.0;
 long remote_position = 0.0;
@@ -50,39 +50,40 @@ float remote_speed = 0.0;
 #define REMOTE_TIME 2
 
 void remoteRun() {
-  if (!remote_enabled) { return; }
+  if (!com_enabled) { return; }
   uint32_t now = millis();
 
   #ifdef MASTER
   // Send control messages at 50Hz
-  if (!remote_waiting && now > remote_sent_ts + REMOTE_TIME) { 
-    remote_sent_ts = now; 
+  if (!com_waiting && now > com_sent_ts + REMOTE_TIME) { 
+    com_sent_ts = now; 
     RemoteControlMessage rcm;
     rcm.magic = BINARY_REMOTE_CONTROL_MAGIC;
-    rcm.seq = remote_seq;
+    rcm.seq = com_seq;
     rcm.control_type = control_type;
     rcm.set_point = remote_set_point;
     rcm.error_code = system_error;
     rcm.crc = get_crc(&rcm, sizeof(RemoteControlMessage)-1);
     SendBuffer(REMOTE_UART, &rcm, sizeof(RemoteControlMessage));
-    remote_waiting = true;
+    com_waiting = true;
   }
 
-  if (remote_waiting && now > remote_sent_ts + 2) {
+  if (com_waiting && now > com_sent_ts + 2) {
     if (system_error != EC_COM_TIMEOUT) {
-      DEBUG_printf(FST("Timeout waiting for remote status response %d\n"), remote_seq);
-      remote_seq++;
+      DEBUG_printf(FST("Timeout waiting for remote status response %d\n"), com_seq);
+      com_seq++;
       //setError(EC_COM_TIMEOUT);
     }
-    remote_waiting = false;
-  }
-  if (remote_status_ts && now > remote_status_ts + REMOTE_TIME * 5000) {
-    if (system_error != EC_COM_TIMEOUT) {
-      DEBUG_println(FST("Timeout waiting for remote status"));
-      setError(EC_COM_TIMEOUT);
-    }
+    com_waiting = false;
   }
   #endif // MASTER
+  if (com_rec_ts && now > com_rec_ts + REMOTE_TIME * 5) {
+    if (system_error != EC_COM_TIMEOUT) {
+      DEBUG_println(FST("Comms timeout"));
+      setError(EC_COM_TIMEOUT);
+      com_enabled = false;
+    }
+  }
 }
 
 void handleRemoteControlMessage(RemoteControlMessage* mp) {
@@ -91,9 +92,11 @@ void handleRemoteControlMessage(RemoteControlMessage* mp) {
   }
   if (mp->error_code && mp->error_code != remote_system_error) {
     setRemoteError(remote_system_error);
-    bldc_enable = false;
   }
-  control_type = mp->control_type;
+  if (control_type != mp->control_type) {
+    control_type = mp->control_type;
+    wheel_angle = 0;
+  }
   switch (control_type) {
     case CT_PWM:
       target_pwm = mp->set_point;
@@ -116,16 +119,15 @@ void handleRemoteControlMessage(RemoteControlMessage* mp) {
   rsm.error_code = system_error;
   rsm.crc = get_crc(&rsm, sizeof(RemoteStatusMessage)-1);
   SendBuffer(REMOTE_UART, &rsm, sizeof(RemoteStatusMessage));
+
+  com_enabled = true;
+  com_rec_ts = millis();
 }
 
 void handleStatusControlMessage(RemoteStatusMessage* mp) {
-  remote_waiting = false;
+  com_waiting = false;
   if (mp->crc != get_crc(mp, sizeof(RemoteStatusMessage)-1)) {
     DEBUG_println(FST("Bad Remote Status CRC"));
-    for (size_t n=0; n<sizeof(RemoteStatusMessage); n++) {
-      debug_printf("%d-%02X ", n, *(((uint8_t*)mp)+n) );
-    }
-    debug_printf("  :  %02X\n",  get_crc(mp, sizeof(RemoteStatusMessage)-1));
     return;
   }
   if (mp->error_code && mp->error_code != remote_system_error) {
@@ -133,14 +135,14 @@ void handleStatusControlMessage(RemoteStatusMessage* mp) {
     setRemoteError(remote_system_error);
     bldc_enable = false;
   }
-  if (mp->seq != remote_seq) {
+  if (mp->seq != com_seq) {
     DEBUG_println(FST("Bad Remote Status sequence"));
     return;
   }
-  remote_seq++;
+  com_seq++;
   remote_position = mp->pos;
   remote_speed = mp->speed;
-  remote_status_ts = millis();  
+  com_rec_ts = millis();  
 }
 
 

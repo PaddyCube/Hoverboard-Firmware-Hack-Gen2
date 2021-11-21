@@ -215,7 +215,7 @@ int main (void)
     usart_init(USART0, USART0_BAUD); // Control
     usart_init(USART1, USART1_BAUD); // Proxy
 	#ifdef MASTER
-    DEBUG_println(FST("Controller start!"));
+    DEBUG_println(FST("START"));
 	#endif
 	#ifdef SLAVE
 	uint8_t rb[2];

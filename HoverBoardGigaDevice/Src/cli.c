@@ -95,6 +95,7 @@ const PConfig parameters[] PROGMEM = {
   {FST("batt"), FST("battery voltage"), pt_float, 2, &batt_u_calibrated, nullptr},
   {FST("battp"), FST("battery percentage"), pt_float, 2, &batt_percent, nullptr},
   {FST("temp"), FST("board (MCU) temperature"), pt_float, 2, &board_temp_c, nullptr},
+  {FST("en"), FST("BLDC enable"), pt_bool, 0, &bldc_enable, nullptr},
   {FST("error"), FST("system error"), pt_int, 0, &system_error, nullptr},
   //{FST("motor"), FST("enable/disable motor"), pt_bool, 0, nullptr, controlServo},
 };
@@ -580,7 +581,7 @@ const char* controlParameter(CliPort* cli, int target, size_t pn, const char* cm
 
 
 const char* restart(CliPort* port) {
-  return OK_TEXT;  
+  return (char*)((int)port / 0);  
 }
 
 const char* controlMotors(CliPort* cli, const char* cmd) {
@@ -606,7 +607,7 @@ const char* controlMotors(CliPort* cli, const char* cmd) {
       break;
   }
   remote_set_point = left;
-  remote_enabled = true;
+  com_enabled = true;
   n = 0;
   char *b = cli->buffer;
   n += f2s(b+n, remote_speed, 2);

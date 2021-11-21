@@ -48,6 +48,7 @@
 #define USART0_RX_SIZE	16
 #define USART1_RX_SIZE	16
 
+// 115200 results in occasional buffer overruns. - May need DMA to work.
 #define USART0_BAUD 57600
 #define USART1_BAUD 57600
 

@@ -75,7 +75,7 @@ void SendBuffer(uint32_t usart_periph, const char buffer[], uint8_t length);
 //----------------------------------------------------------------------------
 uint16_t CalcCRC(uint8_t *ptr, int count);
 
-extern bool remote_enabled;
+extern bool com_enabled;
 extern float remote_set_point;
 extern long remote_position;
 extern float remote_speed;
