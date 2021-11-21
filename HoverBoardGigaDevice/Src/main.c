@@ -47,8 +47,9 @@
 #include "pid.h"
 #include "cli.h"
 #include "utils.h"
+#include "comms.h"
+#include "buzzer.h"
 
-#include "steerAngle.h" 
 
 
 #ifdef MASTER
@@ -78,9 +79,29 @@ void ShutOff(void);
 
 uint32_t last_millis = 0;
 
+float batt_u_calibrated;
+float batt_percent;
 
 void watchdogReset() {
     fwdgt_counter_reload();
+}
+
+void poweroff(void) {
+  bldc_enable = 0;
+  #if defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)
+  printf("-- Motors disabled --\r\n");
+  #endif
+  buzzerCount = 0;  // prevent interraction with beep counter
+  buzzerPattern = 0;
+  for (int i = 0; i < 8; i++) {
+    buzzerFreq = (uint8_t)i;
+    Delay(10);
+  }
+  // saveConfig();
+  #ifdef SELF_HOLD_PIN
+    HAL_GPIO_WritePin(SELF_HOLD_PORT, SELF_HOLD_PIN, GPIO_PIN_RESET);
+  #endif
+  while(1) {}
 }
 
 void loop() {
@@ -92,7 +113,7 @@ void loop() {
         //gpio_bit_write(LED_X1_2_PORT, LED_X1_2_PIN, n++ & 1);
         watchdogReset();
         /*
-        debug_printf("EN:%d | I:%d (%d) [%d %d] U:%d (%d) | Pos: %d %d Ang:%d S:%d (%d)| PWM: %d  (%d %d %d) | PID: %f %f\n\r", 
+        debug_printf(" | I:%d (%d) [%d %d] U:%d (%d) | Pos: %d %d Ang:%d S:%d (%d)| PWM: %d  (%d %d %d) | PID: %f %f\n\r", 
         bldc_enableFin, curL_DC, offset_current_dc, curL_phaA, curL_phaB, ((int32_t)batVoltage * BAT_CALIB_REAL_VOLTAGE) / BAT_CALIB_ADC, batVoltage, wheel_pos, odom_l, wheel_angle, wheel_speed_rpm_filtered>>8, wheel_speed_rpm>>8, pwml, ul, vl, wl,
         angle_PID_error_old, angle_set_point_old);
         */
@@ -107,11 +128,39 @@ void loop() {
         f2s(buffer, speedPid.integral, 1); debug_print(buffer); debug_print(" err:");
         f2s(buffer, speedPid.last_error, 3); debug_print(buffer); debug_print("\n");
         */
+	    //debug_printf("Cur:%d  Bat:%d (%d)\n", curL_DC, ((int32_t)batVoltage * BAT_CALIB_REAL_VOLTAGE) / BAT_CALIB_ADC, batVoltage);
+		
+		//extern volatile adc_buf_t adc_buffer;
+	    //debug_printf("Cur:%d  Bat:%d (%d) %d - %d\n", curL_DC, ((int32_t)batVoltage * BAT_CALIB_REAL_VOLTAGE) / BAT_CALIB_ADC, batVoltage, adc_buffer.v_batt, adc_buffer.mcu_temp);
     }
     pidControllerRun();
-    cliRun(&master_slave_cli);
-  }
+    cliRun();
+	remoteRun();
 
+	batt_u_calibrated = ((float)batVoltage * BAT_CALIB_REAL_VOLTAGE) / BAT_CALIB_ADC / 100.0;
+	batt_percent = (batt_u_calibrated - (BAT_CELLS * 3.4)) * 100.0 / (BAT_CELLS * (4.2 - 3.4));
+	board_temp_c = board_temp_deg_c * 0.1;
+	if (!gpio_input_bit_get(MOTOR_TEMP_PORT, MOTOR_TEMP_PIN)) { setError(EC_MOTOR_OVER_TEMP); }
+
+    if ((TEMP_POWEROFF_ENABLE && board_temp_deg_c >= TEMP_POWEROFF)) {  // poweroff before mainboard burns OR low bat 3
+	  setError(EC_BOARD_OVER_TEMP);
+      poweroff();
+	} else if (batVoltage < BAT_DEAD) {
+	  setError(EC_LOW_BATTERY);
+      poweroff();
+    } else if (system_error || remote_system_error) {                                           // 1 beep (low pitch): Motor error, disable motors
+      bldc_enable = false;
+      beepCount(1, 24, 1);
+    } else if (TEMP_WARNING_ENABLE && board_temp_deg_c >= TEMP_WARNING) {                             // 5 beeps (low pitch): Mainboard temperature warning
+      beepCount(5, 24, 1);
+    } else if (BAT_LVL1_ENABLE && batVoltage < BAT_LVL1) {                                            // 1 beep fast (medium pitch): Low bat 1
+      beepCount(0, 10, 6);
+    } else if (BAT_LVL2_ENABLE && batVoltage < BAT_LVL2) {                                            // 1 beep slow (medium pitch): Low bat 2
+      beepCount(0, 10, 30);
+    } else {  // do not beep
+      beepCount(0, 0, 0);
+    }
+  }
 }
 
 //----------------------------------------------------------------------------
@@ -119,6 +168,7 @@ void loop() {
 //----------------------------------------------------------------------------
 int main (void)
 {
+	int16_t pwmMaster = 0;
 #ifdef MASTER
 	FlagStatus enable = RESET;
 	FlagStatus enableSlave = RESET;
@@ -127,7 +177,6 @@ int main (void)
 	uint8_t sendSlaveIdentifier = 0;
 	int8_t index = 8;
   int16_t pwmSlave = 0;
-	int16_t pwmMaster = 0;
 	int16_t scaledSpeed = 0;
 	int16_t scaledSteer  = 0;
 	float expo = 0;
@@ -146,7 +195,7 @@ int main (void)
 		while(1);
 	}
 	
-  BLDC_Init();
+    BLDC_Init();
 
 	// Init Interrupts
 	Interrupt_init();
@@ -158,12 +207,24 @@ int main (void)
 	GPIO_init();
 
 	// Activate self hold direct after GPIO-init
-	// gpio_bit_write(SELF_HOLD_PORT, SELF_HOLD_PIN, SET);
+	#ifdef SELF_HOLD_PIN
+	gpio_bit_write(SELF_HOLD_PORT, SELF_HOLD_PIN, SET);
+	#endif
 
 	// Init usart master slave
-	//USART_MasterSlave_init();
-    usart_init(USART1, 115200);
-	
+    usart_init(USART0, USART0_BAUD); // Control
+    usart_init(USART1, USART1_BAUD); // Proxy
+	#ifdef MASTER
+    DEBUG_println(FST("Controller start!"));
+	#endif
+	#ifdef SLAVE
+	uint8_t rb[2];
+	rb[0] = 0xDE;
+	rb[1] = 0xDE;
+	SendBuffer(REMOTE_UART, &rb, 2);
+	#endif
+
+
 	// Init ADC
 	ADC_init();
 	
@@ -176,10 +237,10 @@ int main (void)
 	// afterwards watchdog will be fired
 	fwdgt_counter_reload();
 
-	// Init usart steer/bluetooth
-	//USART_Steer_COM_init();
-
-
+/*
+      buzzerFreq = 5;
+      buzzerPattern = 1;
+*/
 	 // gpio_bit_write(LED_X2_GREEN_PORT, LED_X2_GREEN_PIN, SET);
 
 		// Enable channel output
@@ -188,13 +249,14 @@ int main (void)
 		setBldcPWM(pwmMaster);
 
 
-    #if 1
+    #if 0
     anglePid.set_point = 360*10;
     // speedPid.set_point = 150.0;
     target_pwm = 500;
     control_type = CT_ANGLE;
     #endif
 
+    // gpio_bit_write(LED_X1_2_PORT, LED_X1_2_PIN, SET);
     loop();
     
     /*
@@ -274,7 +336,7 @@ int main (void)
 		
 		// Map to an angle of 180 degress to 0 degrees for array access (means angle -90 to 90 degrees)
 		steerAngle = MAP((float)scaledSteer, -1000, 1000, 180, 0);
-		xScale = lookUpTableAngle[(uint16_t)steerAngle];
+		// xScale = lookUpTableAngle[(uint16_t)steerAngle];
 
 		// Mix steering and speed value for right and left speed
 		if(steerAngle >= 90)
@@ -421,7 +483,9 @@ void ShutOff(void)
 	SetEnable(RESET);
 	setBldcPWM(0);
 	
+	#ifdef SELF_HOLD_PIN
 	gpio_bit_write(SELF_HOLD_PORT, SELF_HOLD_PIN, RESET);
+	#endif
 	while(1)
 	{
 		// Reload watchdog until device is off

@@ -7,7 +7,7 @@
 // Support float in printf. Uses 22% memory of 32K
 //asm(".global _printf_float");
 
-uint32_t debug_port = USART_MASTERSLAVE;
+uint32_t debug_port = USART0;
 
 
 void sendDebug(const char* buffer, size_t n) {

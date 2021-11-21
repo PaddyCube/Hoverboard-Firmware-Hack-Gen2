@@ -34,6 +34,20 @@
 #include "gd32f1x0.h"
 #include "config.h"
 
+typedef enum ErrorCode {
+    EC_OK,
+    EC_UNKNOWN_ERROR,
+    EC_FOC_ERROR,
+    EC_OVER_CURRENT,
+    EC_MOTOR_OVER_TEMP,
+    EC_BOARD_OVER_TEMP,
+    EC_LOW_BATTERY,
+    EC_COM_TIMEOUT,
+    EC_PROXY_READ_TIMEOUT
+} ErrorCode;
+
+void setError(ErrorCode code);
+void setRemoteError(ErrorCode code);
 
 //----------------------------------------------------------------------------
 // Set motor enable
@@ -55,10 +69,15 @@ void BLDC_Init(void);
 
 extern uint8_t bldc_enable;
 extern uint8_t bldc_enableFin;
+extern bool reverse_motor;
 extern volatile int pwml;
 extern int ul, vl, wl;
 extern int wheel_pos;
 extern int16_t batVoltage;
+extern float board_temp_c;
+extern int16_t board_temp_deg_c;
+extern int32_t board_temp_adcFixdt;
+extern int16_t board_temp_adcFilt;
 extern int16_t curL_DC;
 extern int16_t curL_phaA;
 extern int16_t curL_phaB;
@@ -68,5 +87,8 @@ extern int16_t odom_l;
 extern long wheel_speed_rpm;
 extern long wheel_speed_rpm_filtered;
 extern long wheel_angle;
+
+extern ErrorCode system_error;
+extern ErrorCode remote_system_error;
 
 #endif

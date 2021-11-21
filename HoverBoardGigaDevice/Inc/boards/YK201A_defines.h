@@ -61,10 +61,8 @@
 #define HALL_C_PIN GPIO_PIN_0
 #define HALL_C_PORT GPIOA
 
-#define TEMP_PIN	GPIO_PIN_7
-#define TEMP_PORT GPIOA
-#define TEMP__CHANNEL ADC_CHANNEL_7
-
+#define MOTOR_TEMP_PIN	GPIO_PIN_7
+#define MOTOR_TEMP_PORT GPIOA
 
 // Usart master slave defines
 #define USART_MASTERSLAVE USART1
@@ -74,9 +72,9 @@
 #define USART_MASTERSLAVE_RX_PORT GPIOA
 
 // ADC defines
-#define VBATT_PIN	GPIO_PIN_6
+#define VBATT_PIN	GPIO_PIN_1
 #define VBATT_PORT GPIOA
-#define VBATT_CHANNEL ADC_CHANNEL_6
+#define VBATT_CHANNEL ADC_CHANNEL_1
 #define CURRENT_DC_PIN	GPIO_PIN_4
 #define CURRENT_DC_PORT GPIOA
 #define CURRENT_DC_CHANNEL ADC_CHANNEL_4
@@ -88,20 +86,17 @@
 #define PHASE_B_PORT GPIOB
 #define PHASE_B_CHANNEL ADC_CHANNEL_8
 
-
-/*
 // Usart steer defines
 #define USART_STEER_COM USART0
 #define USART_STEER_COM_TX_PIN GPIO_PIN_6
 #define USART_STEER_COM_TX_PORT GPIOB
 #define USART_STEER_COM_RX_PIN GPIO_PIN_7
 #define USART_STEER_COM_RX_PORT GPIOB
-*/
 
 #ifdef MASTER
 // Self hold defines
-#define SELF_HOLD_PIN GPIO_PIN_2  // !!!! TODO
-#define SELF_HOLD_PORT GPIOB
+//#define SELF_HOLD_PIN GPIO_PIN_1
+#define SELF_HOLD_PORT GPIOA
 
 // Button defines
 #define BUTTON_PIN GPIO_PIN_15   // !!!! TODO
@@ -123,3 +118,7 @@
 // ADC value conversion defines
 #define MOTOR_AMP_CONV_DC_AMP 0.201465201465  // 3,3V * 1/3 - 0,004Ohm * IL(ampere) = (ADC-Data/4095) *3,3V
 #define ADC_BATTERY_VOLT      0.024169921875 	// V_Batt to V_BattMeasure = factor 30: ( (ADC-Data/4095) *3,3V *30 )
+
+#define BAT_CALIB_REAL_VOLTAGE  2600     // input voltage measured by multimeter (multiplied by 100). In this case 43.00 V * 100 = 4300
+#define BAT_CALIB_ADC           1050     // adc-value measured by mainboard (value nr 5 on UART debug output)
+#define BAT_CELLS               7        // battery number of cells. Normal Hoverboard battery: 10s

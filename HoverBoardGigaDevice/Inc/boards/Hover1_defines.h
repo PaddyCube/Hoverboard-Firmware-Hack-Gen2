@@ -61,10 +61,8 @@
 #define HALL_C_PIN GPIO_PIN_14
 #define HALL_C_PORT GPIOC
 
-#define TEMP_PIN	GPIO_PIN_0
-#define TEMP_PORT GPIOA
-#define TEMP__CHANNEL ADC_CHANNEL_2 // ???
-
+#define MOTOR_TEMP_PIN	GPIO_PIN_0
+#define MOTOR_TEMP_PORT GPIOA
 
 // Usart master slave defines
 #define USART_MASTERSLAVE USART1
@@ -120,3 +118,7 @@
 // ADC value conversion defines
 #define MOTOR_AMP_CONV_DC_AMP 0.201465201465  // 3,3V * 1/3 - 0,004Ohm * IL(ampere) = (ADC-Data/4095) *3,3V
 #define ADC_BATTERY_VOLT      0.024169921875 	// V_Batt to V_BattMeasure = factor 30: ( (ADC-Data/4095) *3,3V *30 )
+
+#define BAT_CALIB_REAL_VOLTAGE  2400      // input voltage measured by multimeter (multiplied by 100). In this case 43.00 V * 100 = 4300
+#define BAT_CALIB_ADC           954      // adc-value measured by mainboard (value nr 5 on UART debug output)
+#define BAT_CELLS               7        // battery number of cells. Normal Hoverboard battery: 10s

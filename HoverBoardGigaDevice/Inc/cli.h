@@ -8,16 +8,6 @@
 #include "gd32f1x0.h"
 #include <string.h>
 
-typedef enum PType {pt_bool=0, pt_int, pt_float, pt_str} PType;
-
-typedef struct PConfig {
-    const char* name;
-    const char* info;
-    PType type;
-    size_t fmt;
-    void* variable;
-    const char* (*callback)(void* variable);
-} PConfig;
 
 #ifndef CLI_RX_BUFFER_SIZE
 #define CLI_RX_BUFFER_SIZE 64
@@ -47,22 +37,37 @@ typedef enum CliResult {
     CR_BAD_CRC,
     CR_BAD_VALUE,
     CR_UNKNOWN_CMD,
+    CR_UNEXPECTED_RESPONSE,
 } CliResult;
 
+typedef enum PType {pt_bool=0, pt_int, pt_float, pt_str} PType;
 
-extern CliPort master_slave_cli;
+typedef struct PConfig {
+    const char* name;
+    const char* info;
+    PType type;
+    size_t fmt;
+    void* variable;
+    const char* (*callback)(void* variable);
+} PConfig;
+
+extern CliPort control_cli;
+extern CliPort proxy_cli;
 
 void cliReceive(CliPort* cli, char c);
-void cliRun(CliPort* cli);
+void cliRun();
+void cliRunPort(CliPort* cli);
 
 const char* cliExecute(CliPort* cli, const char* cmd);
 CliResult cliExecuteBinary(CliPort* cli, const char* cmd);
+CliResult cliHandleResponse(CliPort* cli, const char* cmd);
 bool isWhiteSpace(char c);
 bool isWhiteSpaceOrEnd(char c);
 const char* cliSetError(CliPort* cli, const char* text);
 
 const char* help(CliPort* port);
 const char* restart(CliPort* port);
+const char* controlMotors(CliPort* port, const char* cmd);
 const char* controlParameter(CliPort* cli, int target, size_t pn, const char* cmd);
 
 const char* setBoolPar(size_t pn, int target, bool value);
@@ -76,5 +81,7 @@ size_t readWord(CliPort* cli, const char* cmd, char* result, size_t size);
 size_t readBinary(CliPort* cli, const char* cmd, int* result, bool is_negative);
 size_t readHex(CliPort* cli, const char* cmd, int* result, bool is_negative);
 size_t tryRead(CliPort* cli, const char* str, const char* cmd);
+
+const char* changeControlMode(void* ptr);
 
 #endif // CLI_H

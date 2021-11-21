@@ -31,17 +31,53 @@
 #ifndef COMMS_H
 #define COMMS_H
 
+#include <stddef.h>
 #include "gd32f1x0.h"
-#include "../Inc/config.h"
+#include "config.h"
+
+#define BINARY_CONTROL_MAGIC 0xB1
+#define BINARY_STATUS_MAGIC 0xB2
+#define BINARY_REMOTE_CONTROL_MAGIC 0xB3
+#define BINARY_REMOTE_STATUS_MAGIC 0xB4
+
+#ifndef REMOTE_UART
+#define REMOTE_UART USART1
+#endif
+
+typedef struct __attribute__((__packed__)) RemoteControlMessage {
+    uint8_t magic;
+    uint8_t seq;
+    uint8_t control_type;
+    float set_point;
+    uint8_t error_code;
+    uint8_t crc;
+} RemoteControlMessage;
+
+typedef struct __attribute__((__packed__)) RemoteStatusMessage {
+    uint8_t magic;
+    uint8_t seq;
+    int32_t pos;
+    float speed;
+    uint8_t error_code;
+    uint8_t crc;
+} RemoteStatusMessage;
+
+void remoteRun();
+bool handleRemoteData(uint8_t* buffer, size_t size);
 
 //----------------------------------------------------------------------------
 // Send buffer via USART
 //----------------------------------------------------------------------------
-void SendBuffer(uint32_t usart_periph, const uint8_t buffer[], uint8_t length);
+void SendBuffer(uint32_t usart_periph, const char buffer[], uint8_t length);
 
 //----------------------------------------------------------------------------
 // Calculate CRC
 //----------------------------------------------------------------------------
 uint16_t CalcCRC(uint8_t *ptr, int count);
+
+extern bool remote_enabled;
+extern float remote_set_point;
+extern long remote_position;
+extern float remote_speed;
 
 #endif

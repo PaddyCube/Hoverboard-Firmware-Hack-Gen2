@@ -48,6 +48,9 @@
 #define USART0_RX_SIZE	16
 #define USART1_RX_SIZE	16
 
+#define USART0_BAUD 57600
+#define USART1_BAUD 57600
+
 // ################################################################################
 
 #define PWM_FREQ         		16000     // PWM frequency in Hz
@@ -95,9 +98,6 @@
  * Then you can verify voltage on debug output value 6 (to get calibrated voltage multiplied by 100).
 */
 #define BAT_FILT_COEF           655       // battery voltage filter coefficient in fixed-point. coef_fixedPoint = coef_floatingPoint * 2^16. In this case 655 = 0.01 * 2^16
-#define BAT_CALIB_REAL_VOLTAGE  2400      // input voltage measured by multimeter (multiplied by 100). In this case 43.00 V * 100 = 4300
-#define BAT_CALIB_ADC           954      // adc-value measured by mainboard (value nr 5 on UART debug output)
-#define BAT_CELLS               7        // battery number of cells. Normal Hoverboard battery: 10s
 #define BAT_LVL2_ENABLE         0         // to beep or not to beep, 1 or 0
 #define BAT_LVL1_ENABLE         1         // to beep or not to beep, 1 or 0
 #define BAT_BLINK_INTERVAL      80        // battery led blink interval (80 loops * 5ms ~= 400ms)
@@ -108,6 +108,27 @@
 #define BAT_LVL1                (350 * BAT_CELLS * BAT_CALIB_ADC) / BAT_CALIB_REAL_VOLTAGE    // Red blink:    fast beep. Your battery is almost empty. Charge now! [V*100/cell]. In this case 3.50 V/cell
 #define BAT_DEAD                (337 * BAT_CELLS * BAT_CALIB_ADC) / BAT_CALIB_REAL_VOLTAGE    // All leds off: undervoltage poweroff. (while not driving) [V*100/cell]. In this case 3.37 V/cell
 // ######################## END OF BATTERY ###############################
+
+// ############################### TEMPERATURE ###############################
+/* Board overheat detection: the sensor is inside the STM/GD chip.
+ * It is very inaccurate without calibration (up to 45°C). So only enable this funcion after calibration!
+ * Let your board cool down.
+ * see <How to calibrate.
+ * Get the real temp of the chip by thermo cam or another temp-sensor taped on top of the chip and write it to TEMP_CAL_LOW_DEG_C.
+ * Write debug output value 8 to TEMP_CAL_LOW_ADC. drive around to warm up the board. it should be at least 20°C warmer. repeat it for the HIGH-values.
+ * Enable warning and/or poweroff and make and flash firmware.
+*/
+#define TEMP_FILT_COEF          655       // temperature filter coefficient in fixed-point. coef_fixedPoint = coef_floatingPoint * 2^16. In this case 655 = 0.01 * 2^16
+#define TEMP_CAL_LOW_ADC        1655      // temperature 1: ADC value
+#define TEMP_CAL_LOW_DEG_C      358       // temperature 1: measured temperature [°C * 10]. Here 35.8 °C
+#define TEMP_CAL_HIGH_ADC       1588      // temperature 2: ADC value
+#define TEMP_CAL_HIGH_DEG_C     489       // temperature 2: measured temperature [°C * 10]. Here 48.9 °C
+#define TEMP_WARNING_ENABLE     0         // to beep or not to beep, 1 or 0, DO NOT ACTIVITE WITHOUT CALIBRATION!
+#define TEMP_WARNING            600       // annoying fast beeps [°C * 10].  Here 60.0 °C
+#define TEMP_POWEROFF_ENABLE    0         // to poweroff or not to poweroff, 1 or 0, DO NOT ACTIVITE WITHOUT CALIBRATION!
+#define TEMP_POWEROFF           650       // overheat poweroff. (while not driving) [°C * 10]. Here 65.0 °C
+// ######################## END OF TEMPERATURE ###############################
+
 
 #define A2BIT_CONV             50     // A to bit for current conversion on ADC. Example: 1 A = 50, 2 A = 100, etc
 
@@ -153,7 +174,7 @@
 // ########################### PID Defaults ########################
 
 #define ANGLE_PID_KP 1.25
-#define ANGLE_PID_KI 1.0
+#define ANGLE_PID_KI 1.5
 #define ANGLE_PID_KD 0.05 * 0
 
 //#define SPEED_PID_KP 20.0

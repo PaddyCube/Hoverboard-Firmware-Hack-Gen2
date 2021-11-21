@@ -79,21 +79,9 @@ void TIMER13_IRQHandler(void)
 		timedOut = RESET;
 		timeoutCounter_ms++;
 	}
-
-#ifdef SLAVE
-	if (hornCounter_ms >= 2000)
-	{
-		// Avoid horn to be activated longer than 2 seconds
-		SetUpperLEDMaster(RESET);
-	}
-	else if (hornCounter_ms < 2000)
-	{
-		hornCounter_ms++;
-	}
 	
 	// Update LED program
-	CalculateLEDProgram();
-#endif
+	//CalculateLEDProgram();
 	
 	// Clear timer update interrupt flag
 	timer_interrupt_flag_clear(TIMER13, TIMER_INT_UP);
@@ -115,7 +103,7 @@ void TIMER0_BRK_UP_TRG_COM_IRQHandler(void)
 	timer_interrupt_flag_clear(TIMER_BLDC, TIMER_INT_UP);
 
 	ticks_32khz++;
-	gpio_bit_write(LED_X1_1_PORT, LED_X1_1_PIN, ticks_32khz & 1);
+	gpio_bit_write(LED_X1_2_PORT, LED_X1_2_PIN, ticks_32khz & 1);
 }
 
 //----------------------------------------------------------------------------
@@ -171,6 +159,7 @@ void DMA_Channel3_4_IRQHandler(void)
 	}
 }
 
+volatile char foo =0;
 
 void USART0_IRQHandler(void)
 {
@@ -188,12 +177,36 @@ void USART0_IRQHandler(void)
 		dma_channel_enable(DMA_CH2);
 	}
 #else	
+	/*!< read data buffer not empty interrupt and flag */
 	if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_RBNE))
 	{
-		usart_interrupt_flag_clear(USART0,USART_INT_FLAG_RBNE);
-		char c = usart_data_receive(USART0);
+		usart_interrupt_flag_clear(USART0, USART_INT_FLAG_RBNE);
+		// char c = usart_data_receive(USART0);
+ 		cliReceive(&control_cli, usart_data_receive(USART0));
 	}
-#endif	
+#endif
+
+   	/*!< read data buffer not empty interrupt and overrun error flag */
+   	if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_RBNE_ORERR)) { 
+	   usart_interrupt_flag_clear(USART0, USART_INT_FLAG_RBNE_ORERR);
+	} 
+ 
+    #if 0
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_EB)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_EB); cliReceive(&control_cli, '0');} /*!< end of block interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_RT)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_RT); cliReceive(&control_cli, '1');}       /*!< receiver timeout interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_AM)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_AM); cliReceive(&control_cli, '2');}       /*!< address match interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_PERR)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_PERR); cliReceive(&control_cli, '3');}       /*!< parity error interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_TBE)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_TBE); cliReceive(&control_cli, '4');}        /*!< transmitter buffer empty interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_TC)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_TC); cliReceive(&control_cli, '5');}         /*!< transmission complete interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_IDLE)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_IDLE); cliReceive(&control_cli, '7');}       /*!< IDLE line detected interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_LBD)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_LBD); cliReceive(&control_cli, '8');}        /*!< LIN break detected interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_WU)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_WU); cliReceive(&control_cli, '9');}       /*!< wakeup from deep-sleep mode interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_CTS)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_CTS); cliReceive(&control_cli, 'A');}      /*!< CTS interrupt and flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_ERR_NERR)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_ERR_NERR); cliReceive(&control_cli, 'B');}   /*!< error interrupt and noise error flag */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_ERR_ORERR)) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_ERR_ORERR); cliReceive(&control_cli, 'C');}  /*!< error interrupt and overrun error */
+    if(RESET != usart_interrupt_flag_get(USART0, USART_INT_FLAG_ERR_FERR )) { usart_interrupt_flag_clear(USART0, USART_INT_FLAG_ERR_FERR); cliReceive(&control_cli, 'D');} /*!< error interrupt and frame error flag */
+	#endif
+
 }
 
 
@@ -217,13 +230,19 @@ void USART1_IRQHandler(void)
 		dma_channel_enable(DMA_CH4);
 	}
 #else	
+	/*!< read data buffer not empty interrupt and flag */
 	if(RESET != usart_interrupt_flag_get(USART1, USART_INT_FLAG_RBNE))
 	{
 		usart_interrupt_flag_clear(USART1, USART_INT_FLAG_RBNE);
 		// USART1_RX_Buffer[0] = usart_data_receive(USART1);
-		cliReceive(&master_slave_cli, usart_data_receive(USART1));
+		cliReceive(&proxy_cli, usart_data_receive(USART1));
 	}
 #endif	
+   	/*!< read data buffer not empty interrupt and overrun error flag */
+   	if(RESET != usart_interrupt_flag_get(USART1, USART_INT_FLAG_RBNE_ORERR)) { 
+	   usart_interrupt_flag_clear(USART1, USART_INT_FLAG_RBNE_ORERR);
+	} 
+
 }
 
 

@@ -133,7 +133,6 @@ void GPIO_init(void)
 	rcu_periph_clock_enable(RCU_GPIOC);
 	rcu_periph_clock_enable(RCU_GPIOF);
 
-
 	gpio_mode_set(LED_X1_1_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_X1_1_PIN);	
 	gpio_output_options_set(LED_X1_1_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, LED_X1_1_PIN);
 	gpio_mode_set(LED_X1_2_PORT, GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, LED_X1_2_PIN);	
@@ -169,7 +168,11 @@ void GPIO_init(void)
 	gpio_mode_set(HALL_A_PORT , GPIO_MODE_INPUT, GPIO_PUPD_NONE, HALL_A_PIN);
 	gpio_mode_set(HALL_B_PORT , GPIO_MODE_INPUT, GPIO_PUPD_NONE, HALL_B_PIN);
 	gpio_mode_set(HALL_C_PORT , GPIO_MODE_INPUT, GPIO_PUPD_NONE, HALL_C_PIN);	
-	
+	#ifdef MOTOR_TEMP_PIN
+		gpio_mode_set(MOTOR_TEMP_PORT , GPIO_MODE_INPUT, GPIO_PUPD_NONE, MOTOR_TEMP_PIN);
+	#endif
+
+
 	// Init USART_MASTERSLAVE
 	gpio_mode_set(USART_MASTERSLAVE_TX_PORT , GPIO_MODE_AF, GPIO_PUPD_PULLUP, USART_MASTERSLAVE_TX_PIN);	
 	gpio_mode_set(USART_MASTERSLAVE_RX_PORT , GPIO_MODE_AF, GPIO_PUPD_PULLUP, USART_MASTERSLAVE_RX_PIN);
@@ -219,11 +222,13 @@ void GPIO_init(void)
   gpio_af_set(TIMER_BLDC_GL_PORT, GPIO_AF_2, TIMER_BLDC_GL_PIN);
   gpio_af_set(TIMER_BLDC_BL_PORT, GPIO_AF_2, TIMER_BLDC_BL_PIN);
   gpio_af_set(TIMER_BLDC_YL_PORT, GPIO_AF_2, TIMER_BLDC_YL_PIN);
-/*	
+
 	// Init self hold
+	#ifdef SELF_HOLD_PIN
 	gpio_mode_set(SELF_HOLD_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, SELF_HOLD_PIN);	
 	gpio_output_options_set(SELF_HOLD_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_10MHZ, SELF_HOLD_PIN);
-*/	
+	#endif
+
 	// Init USART0
 	#ifdef USART_STEER_COM_RX_PORT
 	gpio_mode_set(USART_STEER_COM_TX_PORT , GPIO_MODE_AF, GPIO_PUPD_PULLUP, USART_STEER_COM_TX_PIN);	
@@ -234,19 +239,23 @@ void GPIO_init(void)
 	gpio_af_set(USART_STEER_COM_RX_PORT, GPIO_AF_0, USART_STEER_COM_RX_PIN);
 	#endif
 
-/*	
 #ifdef MASTER	
 	// Init buzzer
+	#ifdef BUZZER_PIN
 	gpio_mode_set(BUZZER_PORT , GPIO_MODE_OUTPUT, GPIO_PUPD_NONE, BUZZER_PIN);	
 	gpio_output_options_set(BUZZER_PORT, GPIO_OTYPE_PP, GPIO_OSPEED_50MHZ, BUZZER_PIN);
+	#endif
 	
 	// Init button
+	#ifdef BUTTON_PIN
 	gpio_mode_set(BUTTON_PORT , GPIO_MODE_INPUT, GPIO_PUPD_NONE, BUTTON_PIN);	
+	#endif
 	
 	// Init charge state
+	#ifdef CHARGE_STATE_PIN
 	gpio_mode_set(CHARGE_STATE_PORT, GPIO_MODE_INPUT, GPIO_PUPD_PULLUP, CHARGE_STATE_PIN);
+	#endif
 #endif
-*/
 }
 	
 //----------------------------------------------------------------------------
@@ -374,24 +383,27 @@ void ADC_init(void)
 	dma_interrupt_enable(DMA_CH0, DMA_CHXCTL_FTFIE);
 	
 	// At least clear number of remaining data to be transferred by the DMA 
-	dma_transfer_number_config(DMA_CH0, 4);
+	dma_transfer_number_config(DMA_CH0, 5);
 	
 	// Enable DMA channel 0
 	dma_channel_enable(DMA_CH0);
 	
-	adc_channel_length_config(ADC_REGULAR_CHANNEL, 4);
+	adc_channel_length_config(ADC_REGULAR_CHANNEL, 5);
 	adc_regular_channel_config(0, VBATT_CHANNEL, ADC_SAMPLETIME_13POINT5);
 	adc_regular_channel_config(1, CURRENT_DC_CHANNEL, ADC_SAMPLETIME_13POINT5);
 	adc_regular_channel_config(2, PHASE_A_CHANNEL, ADC_SAMPLETIME_13POINT5);
  	adc_regular_channel_config(3, PHASE_B_CHANNEL, ADC_SAMPLETIME_13POINT5);
+ 	adc_regular_channel_config(4, ADC_CHANNEL_16, ADC_SAMPLETIME_239POINT5); // Internal Temp sensor
 	adc_data_alignment_config(ADC_DATAALIGN_RIGHT);
 	
 	// Set trigger of ADC
 	adc_external_trigger_config(ADC_REGULAR_CHANNEL, ENABLE);
 	adc_external_trigger_source_config(ADC_REGULAR_CHANNEL, ADC_EXTTRIG_REGULAR_SWRCST);
 	
-	// Disable the temperature sensor, Vrefint and vbat channel
-	adc_tempsensor_vrefint_disable();
+	// Enable the temperature sensor, Vrefint
+	adc_tempsensor_vrefint_enable();
+
+	// Disable the vbat, Vrefint and vbat channel
 	adc_vbat_disable();
 	
 	// ADC analog watchdog disable

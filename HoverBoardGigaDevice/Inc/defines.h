@@ -51,7 +51,7 @@ typedef struct
 	uint16_t current_dc;
 	uint16_t phase_a;
 	uint16_t phase_b;
-  uint16_t temp;
+  uint16_t mcu_temp;
 } adc_buf_t;
 
 

@@ -34,16 +34,12 @@
 #include "BLDC_controller.h"           /* Model's header file */
 
 extern RT_MODEL *const rtM_Left;
-extern RT_MODEL *const rtM_Right;
 
 extern DW   rtDW_Left;                  /* Observable states */
 extern ExtU rtU_Left;                   /* External inputs */
 extern ExtY rtY_Left;                   /* External outputs */
 extern P    rtP_Left;
 
-extern DW   rtDW_Right;                 /* Observable states */
-extern ExtU rtU_Right;                  /* External inputs */
-extern ExtY rtY_Right;                  /* External outputs */
 // ###############################################################################
 
 static int16_t pwm_margin;              /* This margin allows to have a window in the PWM signal for proper FOC Phase currents measurement */
@@ -52,6 +48,16 @@ extern uint8_t ctrlModReq;
 static int16_t curDC_max = (I_DC_MAX * A2BIT_CONV);
 int16_t curL_phaA = 0, curL_phaB = 0, curL_DC = 0;
 // int16_t curR_phaB = 0, curR_phaC = 0, curR_DC = 0;
+
+
+ErrorCode system_error = EC_OK;
+ErrorCode remote_system_error = EC_OK;
+
+#ifdef MASTER
+bool reverse_motor = 0;
+#else
+bool reverse_motor = 1;
+#endif
 
 volatile int pwml = 0;
 //volatile int pwmr = 0;
@@ -84,9 +90,14 @@ int16_t offset_v_batt    = 2000;
 int16_t offset_phase_a    = 2000;
 int16_t offset_phase_b    = 2000;
 
-
 int16_t        batVoltage       = (400 * BAT_CELLS * BAT_CALIB_ADC) / BAT_CALIB_REAL_VOLTAGE;
 static int32_t batVoltageFixdt  = (400 * BAT_CELLS * BAT_CALIB_ADC) / BAT_CALIB_REAL_VOLTAGE << 16;  // Fixed-point filter output initialized at 400 V*100/cell = 4 V/cell converted to fixed-point
+
+int16_t board_temp_deg_c = 0;        // global variable for calibrated temperature in degrees Celsius
+int32_t board_temp_adcFixdt = 0;     // Fixed-point filter output initialized with current ADC converted to fixed-point
+int16_t board_temp_adcFilt = 0;
+float board_temp_c = 0.0;
+
 
 int16_t odom_l = 0;
 
@@ -115,14 +126,30 @@ int _rpm_delta;
   int ul, vl, wl;
   // int ur, vr, wr;
 
+
+void setError(ErrorCode code) {
+  system_error = code;
+  if (code) {
+    gpio_bit_write(LED_X1_3_PORT, LED_X1_3_PIN, SET);
+    bldc_enable = false;
+  } else {
+    gpio_bit_write(LED_X1_3_PORT, LED_X1_3_PIN, RESET);
+    bldc_enable = true;
+  }
+}
+
+void setRemoteError(ErrorCode code) {
+  remote_system_error = code;
+  bldc_enable = false;
+}
+
 void setBldcEnable(FlagStatus state) {
     bldc_enable = state;
 }
 
 void setBldcPWM(int16_t power) {
-	pwml = CLAMP(power, -1000, 1000);
+	pwml = ABS(power) >= 50 ? CLAMP(power, -1000, 1000) : 0;
 }
-
 
 void BLDC_Init(void) {
   /* Set BLDC controller parameters */ 
@@ -185,6 +212,26 @@ int16_t up_or_down(int16_t vorher, int16_t nachher){
 }
 
 
+void buzzer_sound() {
+  buzzerTimer++;
+  // Create square wave for buzzer
+  #ifdef BUZZER_PIN
+  if (buzzerFreq != 0 && (buzzerTimer / 5000) % (buzzerPattern + 1) == 0) {
+    if (buzzerPrev == 0) {
+      buzzerPrev = 1;
+      if (++buzzerIdx > (buzzerCount + 2)) {    // pause 2 periods
+        buzzerIdx = 1;
+      }
+    }
+    if (buzzerTimer % buzzerFreq == 0 && (buzzerIdx <= buzzerCount || buzzerCount == 0)) {
+      gpio_bit_write(BUZZER_PORT, BUZZER_PIN, ! gpio_output_bit_get(BUZZER_PORT, BUZZER_PIN));
+    }
+  } else if (buzzerPrev) {
+      gpio_bit_write(BUZZER_PORT, BUZZER_PIN, RESET);
+      buzzerPrev = 0;
+  }
+  #endif
+}
 
 void calculateRPM(int delta) {
   uint32_t timer_value = ticks_32khz;
@@ -243,10 +290,17 @@ void CalculateBLDC(void) {
     return;
   }
 
+  buzzer_sound();
   if (buzzerTimer % 1000 == 0) {  // Filter battery voltage at a slower sampling rate
     filtLowPass32(adc_buffer.v_batt, BAT_FILT_COEF, &batVoltageFixdt);
     batVoltage = (int16_t)(batVoltageFixdt >> 16);  // convert fixed-point to integer
   }
+
+    // ####### CALC BOARD TEMPERATURE #######
+    filtLowPass32(adc_buffer.mcu_temp, TEMP_FILT_COEF, &board_temp_adcFixdt);
+    board_temp_adcFilt  = (int16_t)(board_temp_adcFixdt >> 16);  // convert fixed-point to integer
+    board_temp_deg_c    = (TEMP_CAL_HIGH_DEG_C - TEMP_CAL_LOW_DEG_C) * (board_temp_adcFilt - TEMP_CAL_LOW_ADC) / (TEMP_CAL_HIGH_ADC - TEMP_CAL_LOW_ADC) + TEMP_CAL_LOW_DEG_C;
+
 
   // Get motor currents
   curL_phaA = (int16_t)(offset_phase_a - adc_buffer.phase_a);
@@ -261,22 +315,6 @@ void CalculateBLDC(void) {
   	timer_automatic_output_enable(TIMER_BLDC);
   }
 
-  // Create square wave for buzzer
-  buzzerTimer++;
-  if (buzzerFreq != 0 && (buzzerTimer / 5000) % (buzzerPattern + 1) == 0) {
-    if (buzzerPrev == 0) {
-      buzzerPrev = 1;
-      if (++buzzerIdx > (buzzerCount + 2)) {    // pause 2 periods
-        buzzerIdx = 1;
-      }
-    }
-    if (buzzerTimer % buzzerFreq == 0 && (buzzerIdx <= buzzerCount || buzzerCount == 0)) {
-      //HAL_GPIO_TogglePin(BUZZER_PORT, BUZZER_PIN);
-    }
-  } else if (buzzerPrev) {
-      //HAL_GPIO_WritePin(BUZZER_PORT, BUZZER_PIN, GPIO_PIN_RESET);
-      buzzerPrev = 0;
-  }
 
   // Adjust pwm_margin depending on the selected Control Type
   if (rtP_Left.z_ctrlTypSel == FOC_CTRL) {
@@ -297,21 +335,17 @@ void CalculateBLDC(void) {
 
   /* Make sure to stop BOTH motors in case of an error */
   bldc_enableFin = bldc_enable && !rtY_Left.z_errCode;
+  if (rtY_Left.z_errCode) {
+    setError(EC_FOC_ERROR);
+  }
  
-  // ========================= LEFT MOTOR ============================ 
-    // Get hall sensors values
-
-    uint8_t hall_ul = !gpio_input_bit_get(HALL_A_PORT, HALL_A_PIN);
-    uint8_t hall_vl = !gpio_input_bit_get(HALL_B_PORT, HALL_B_PIN);
-    uint8_t hall_wl = !gpio_input_bit_get(HALL_C_PORT, HALL_C_PIN);
-
     /* Set motor inputs here */
     rtU_Left.b_motEna     = bldc_enableFin;
     rtU_Left.z_ctrlModReq = ctrlModReq;  
-    rtU_Left.r_inpTgt     = pwml;
-    rtU_Left.b_hallA      = hall_ul;
-    rtU_Left.b_hallB      = hall_vl;
-    rtU_Left.b_hallC      = hall_wl;
+    rtU_Left.r_inpTgt     = reverse_motor ? -pwml : pwml;
+    rtU_Left.b_hallA      = !gpio_input_bit_get(HALL_A_PORT, HALL_A_PIN);
+    rtU_Left.b_hallB      = !gpio_input_bit_get(HALL_B_PORT, HALL_B_PIN);
+    rtU_Left.b_hallC      = !gpio_input_bit_get(HALL_C_PORT, HALL_C_PIN);
     //rtU_Left.i_phaAB      = curL_phaA;
     //rtU_Left.i_phaBC      = curL_phaB;
     //rtU_Left.i_DCLink     = curL_DC;
@@ -327,7 +361,12 @@ void CalculateBLDC(void) {
   // errCodeLeft  = rtY_Left.z_errCode;
   // motSpeedLeft = rtY_Left.n_mot;
   // motAngleLeft = rtY_Left.a_elecAngle;
-    uint8_t encoding = (uint8_t)((hall_ul<<2) + (hall_vl<<1) + hall_wl);
+    uint8_t encoding = 0;
+    if (reverse_motor) {
+      encoding = (uint8_t)((rtU_Left.b_hallC<<2) + (rtU_Left.b_hallB<<1) + rtU_Left.b_hallA );
+    } else {
+      encoding = (uint8_t)((rtU_Left.b_hallA<<2) + (rtU_Left.b_hallB<<1) + rtU_Left.b_hallC );
+    }
     wheel_pos = rtConstP.vec_hallToPos_Value[encoding];
 
     int delta = up_or_down(wp_l_vorher, wheel_pos);
