@@ -36,17 +36,17 @@
 #include "led.h"
 #include "cli.h"
 
-uint32_t msTicks;
+uint32_t ticksMs;
+uint32_t ticksMs10;
 uint32_t timeoutCounter_ms = 0;
 FlagStatus timedOut = SET;
 volatile uint32_t ticks_32khz = 0;
 
 //----------------------------------------------------------------------------
-// SysTick_Handler
+// SysTick_Handler 100Hz
 //----------------------------------------------------------------------------
-void SysTick_Handler(void)
-{
-  msTicks++;
+void SysTick_Handler(void) {
+  	ticksMs10++;
 }
 
 //----------------------------------------------------------------------------
@@ -54,7 +54,7 @@ void SysTick_Handler(void)
 //----------------------------------------------------------------------------
 void ResetTimeout(void)
 {
-  timeoutCounter_ms = 0;
+  	timeoutCounter_ms = 0;
 }
 
 //----------------------------------------------------------------------------
@@ -65,6 +65,7 @@ void ResetTimeout(void)
 void TIMER13_IRQHandler(void)
 {	
 	//TIMER13_int_cnt++;  // Debug counter
+	ticksMs++;
 	if (timeoutCounter_ms > TIMEOUT_MS)
 	{
 		// First timeout reset all process values
@@ -103,7 +104,6 @@ void TIMER0_BRK_UP_TRG_COM_IRQHandler(void)
 	timer_interrupt_flag_clear(TIMER_BLDC, TIMER_INT_UP);
 
 	ticks_32khz++;
-	gpio_bit_write(LED_X1_2_PORT, LED_X1_2_PIN, ticks_32khz & 1);
 }
 
 //----------------------------------------------------------------------------
@@ -252,7 +252,7 @@ void USART1_IRQHandler(void)
 //----------------------------------------------------------------------------
 uint32_t millis()
 {
-	return msTicks;
+	return ticksMs;
 }
 
 
@@ -260,20 +260,16 @@ uint32_t millis()
 // Returns number of microseconds since system start (32kHz actual resolution)
 //----------------------------------------------------------------------------
 uint32_t micros() {
-  return (ticks_32khz * 125LL) >> 4;
+  	return (ticks_32khz * 125LL) >> 4;
 }
 
 
 //----------------------------------------------------------------------------
-// Delays number of tick Systicks (happens every 10 ms)
+// Delays number of milliseconds
 //----------------------------------------------------------------------------
-void Delay (uint32_t dlyTicks)
-{
-  uint32_t curTicks;
-
-  curTicks = msTicks;
-  while ((msTicks - curTicks) < dlyTicks)
-	{
+void delay(uint32_t delayMs) {
+  	uint32_t curTicks= ticksMs;
+  	while ((ticksMs - curTicks) < delayMs) {
 		__NOP();
 	}
 }

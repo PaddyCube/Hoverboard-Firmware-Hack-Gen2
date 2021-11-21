@@ -47,7 +47,7 @@ uint32_t millis(void);
 //----------------------------------------------------------------------------
 // Delays number of tick Systicks (happens every 10 ms)
 //----------------------------------------------------------------------------
-void Delay (uint32_t dlyTicks);
+void delay (uint32_t dlyTicks);
 
 //----------------------------------------------------------------------------
 // Returns number of microseconds since system start (32kHz actual resolution)

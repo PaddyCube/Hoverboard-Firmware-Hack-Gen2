@@ -47,7 +47,7 @@ float remote_set_point = 0.0;
 long remote_position = 0.0;
 float remote_speed = 0.0;
 
-#define REMOTE_TIME 2
+#define REMOTE_TIME 20
 
 void remoteRun() {
   if (!com_enabled) { return; }
@@ -68,7 +68,7 @@ void remoteRun() {
     com_waiting = true;
   }
 
-  if (com_waiting && now > com_sent_ts + 2) {
+  if (com_waiting && now > com_sent_ts + 30) {
     if (system_error != EC_COM_TIMEOUT) {
       DEBUG_printf(FST("Timeout waiting for remote status response %d\n"), com_seq);
       com_seq++;
@@ -77,7 +77,7 @@ void remoteRun() {
     com_waiting = false;
   }
   #endif // MASTER
-  if (com_rec_ts && now > com_rec_ts + REMOTE_TIME * 5) {
+  if (com_rec_ts && now > com_rec_ts + REMOTE_TIME * 50) {
     if (system_error != EC_COM_TIMEOUT) {
       DEBUG_println(FST("Comms timeout"));
       setError(EC_COM_TIMEOUT);
@@ -125,6 +125,7 @@ void handleRemoteControlMessage(RemoteControlMessage* mp) {
 }
 
 void handleStatusControlMessage(RemoteStatusMessage* mp) {
+  //debug_printf("REC %d %d - %d\n", millis(), com_sent_ts, millis()-com_sent_ts);
   com_waiting = false;
   if (mp->crc != get_crc(mp, sizeof(RemoteStatusMessage)-1)) {
     DEBUG_println(FST("Bad Remote Status CRC"));

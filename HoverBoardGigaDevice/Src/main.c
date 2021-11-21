@@ -95,7 +95,7 @@ void poweroff(void) {
   buzzerPattern = 0;
   for (int i = 0; i < 8; i++) {
     buzzerFreq = (uint8_t)i;
-    Delay(10);
+    delay(100);
   }
   // saveConfig();
   #ifdef SELF_HOLD_PIN
@@ -108,7 +108,7 @@ void loop() {
   int n = 0;
 	while(1) {
     uint32_t now = millis();
-    if (now - last_millis > 10) {
+    if (now - last_millis > 100) {
         last_millis = now;
         //gpio_bit_write(LED_X1_2_PORT, LED_X1_2_PIN, n++ & 1);
         watchdogReset();
@@ -215,7 +215,7 @@ int main (void)
     usart_init(USART0, USART0_BAUD); // Control
     usart_init(USART1, USART1_BAUD); // Proxy
 	#ifdef MASTER
-    DEBUG_println(FST("START"));
+    DEBUG_println(FST("\nSTART"));
 	#endif
 	#ifdef SLAVE
 	uint8_t rb[2];
@@ -256,7 +256,7 @@ int main (void)
     control_type = CT_ANGLE;
     #endif
 
-    // gpio_bit_write(LED_X1_2_PORT, LED_X1_2_PIN, SET);
+    gpio_bit_write(LED_X1_2_PORT, LED_X1_2_PIN, SET);
     loop();
     
     /*
@@ -295,7 +295,7 @@ int main (void)
     // gpio_bit_write(LED_X2_GREEN_PORT, LED_X2_GREEN_PIN, led_state & 1);
     led_state++;
 		//Delay(DELAY_IN_MAIN_LOOP);
-    Delay(10);
+    delay(100);
   }
 /*
 #ifdef MASTER
@@ -450,7 +450,7 @@ int main (void)
     }
 #endif	
 
-		Delay(DELAY_IN_MAIN_LOOP);
+		delay(DELAY_IN_MAIN_LOOP);
 		
 		// Reload watchdog (watchdog fires after 1,6 seconds)
 		fwdgt_counter_reload();
@@ -469,7 +469,7 @@ void ShutOff(void)
 	for (; index < 8; index++)
 	{
 		buzzerFreq = index;
-		Delay(10);
+		delay(100);
 	}
 	buzzerFreq = 0;
 	

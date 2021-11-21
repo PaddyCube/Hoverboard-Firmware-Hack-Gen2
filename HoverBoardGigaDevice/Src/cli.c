@@ -150,7 +150,7 @@ size_t cliPrintf(CliPort* cli, const char* format, ...) {
 
 void cliRun() {
   if (prq_count) {
-    if (read_queue[prq_read].ts + 10 < millis() ) {
+    if (read_queue[prq_read].ts + 100 < millis() ) {
       DEBUG_println(FST("Proxy Read Timeout"));
       prq_read++;
       if (prq_read >= PROXY_READ_QUEUE_SIZE) { prq_read = 0; }
