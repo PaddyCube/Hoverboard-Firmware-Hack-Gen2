@@ -217,7 +217,7 @@ void cliRunPort(CliPort* cli) {
         cli->command_index = 0;
       }
     } else if (fc=='\r' || fc=='\n' || fc=='?' || (fc>='A' && fc<='Z') || (fc>='a' && fc<='z')) { // ASCII command
-        if (c=='\r' || c=='\n' || c=='?'  || c==' '  || c=='.' || (c>='A' && c<='Z') || (c>='a' && c<='z')  || (c>='0' && c<='9')) {
+        if (c=='\r' || c=='\n' || c=='?'  || c==' '  || c=='.' || c==',' || c=='+' || c=='-' || (c>='A' && c<='Z') || (c>='a' && c<='z')  || (c>='0' && c<='9')) {
           if (c == '\n' || c == '\r') { 
               cli->command[cli->command_index-1] = '\0';
               cli->command_index = 0;
@@ -477,6 +477,10 @@ const char* controlDebug(CliPort* cli, const char* cmd) {
 */
 
 const char* changeControlMode(void* ptr) {
+  speedPid.integral = 0.0;
+  speedPid.last_error = 0.0;
+  anglePid.integral = 0.0;
+  anglePid.last_error = 0.0;
   wheel_angle = 0;
   return 0;
 }

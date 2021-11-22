@@ -50,7 +50,7 @@ float remote_speed = 0.0;
 #define REMOTE_TIME 20
 
 void remoteRun() {
-  if (!com_enabled) { return; }
+  if (!com_enabled || system_error) { return; }
   uint32_t now = millis();
 
   #ifdef MASTER
@@ -77,7 +77,7 @@ void remoteRun() {
     com_waiting = false;
   }
   #endif // MASTER
-  if (com_rec_ts && now > com_rec_ts + REMOTE_TIME * 50) {
+  if (com_rec_ts && now > com_rec_ts + REMOTE_TIME * 90) {
     if (system_error != EC_COM_TIMEOUT) {
       DEBUG_println(FST("Comms timeout"));
       setError(EC_COM_TIMEOUT);
@@ -95,6 +95,10 @@ void handleRemoteControlMessage(RemoteControlMessage* mp) {
   }
   if (control_type != mp->control_type) {
     control_type = mp->control_type;
+    speedPid.integral = 0.0;
+    speedPid.last_error = 0.0;
+    anglePid.integral = 0.0;
+    anglePid.last_error = 0.0;
     wheel_angle = 0;
   }
   switch (control_type) {
