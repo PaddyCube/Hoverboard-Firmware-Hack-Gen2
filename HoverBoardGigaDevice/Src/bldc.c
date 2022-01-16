@@ -349,9 +349,9 @@ void CalculateBLDC(void) {
     rtU_Left.b_hallA      = !gpio_input_bit_get(HALL_A_PORT, HALL_A_PIN);
     rtU_Left.b_hallB      = !gpio_input_bit_get(HALL_B_PORT, HALL_B_PIN);
     rtU_Left.b_hallC      = !gpio_input_bit_get(HALL_C_PORT, HALL_C_PIN);
-    //rtU_Left.i_phaAB      = curL_phaA;
-    //rtU_Left.i_phaBC      = curL_phaB;
-    //rtU_Left.i_DCLink     = curL_DC;
+    rtU_Left.i_phaAB      = curL_phaA;
+    rtU_Left.i_phaBC      = curL_phaB;
+    rtU_Left.i_DCLink     = curL_DC;
     // rtU_Left.a_mechAngle   = ...; // Angle input in DEGREES [0,360] in fixdt(1,16,4) data type. If `angle` is float use `= (int16_t)floor(angle * 16.0F)` If `angle` is integer use `= (int16_t)(angle << 4)`
     
     /* Step the controller */

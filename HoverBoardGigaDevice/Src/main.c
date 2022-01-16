@@ -88,9 +88,7 @@ void watchdogReset() {
 
 void poweroff(void) {
   bldc_enable = 0;
-  #if defined(DEBUG_SERIAL_USART2) || defined(DEBUG_SERIAL_USART3)
-  printf("-- Motors disabled --\r\n");
-  #endif
+  DEBUG_println(FST("-- Motors disabled --\n"));
   buzzerCount = 0;  // prevent interraction with beep counter
   buzzerPattern = 0;
   for (int i = 0; i < 8; i++) {
@@ -99,7 +97,7 @@ void poweroff(void) {
   }
   // saveConfig();
   #ifdef SELF_HOLD_PIN
-    HAL_GPIO_WritePin(SELF_HOLD_PORT, SELF_HOLD_PIN, GPIO_PIN_RESET);
+    gpio_bit_write(SELF_HOLD_PORT, SELF_HOLD_PIN, SET);
   #endif
   while(1) {}
 }
@@ -134,13 +132,18 @@ void loop() {
 	    //debug_printf("Cur:%d  Bat:%d (%d) %d - %d\n", curL_DC, ((int32_t)batVoltage * BAT_CALIB_REAL_VOLTAGE) / BAT_CALIB_ADC, batVoltage, adc_buffer.v_batt, adc_buffer.mcu_temp);
     }
     pidControllerRun();
-    cliRun();
+    #ifdef CLI
+	cliRun();
+	#endif
 	remoteRun();
 
 	batt_u_calibrated = ((float)batVoltage * BAT_CALIB_REAL_VOLTAGE) / BAT_CALIB_ADC / 100.0;
 	batt_percent = (batt_u_calibrated - (BAT_CELLS * 3.4)) * 100.0 / (BAT_CELLS * (4.2 - 3.4));
 	board_temp_c = board_temp_deg_c * 0.1;
-	if (!gpio_input_bit_get(MOTOR_TEMP_PORT, MOTOR_TEMP_PIN)) { setError(EC_MOTOR_OVER_TEMP); }
+
+	#ifdef MOTOR_TEMP_PORT
+	  if (!gpio_input_bit_get(MOTOR_TEMP_PORT, MOTOR_TEMP_PIN)) { setError(EC_MOTOR_OVER_TEMP); }
+    #endif
 
     if ((TEMP_POWEROFF_ENABLE && board_temp_deg_c >= TEMP_POWEROFF)) {  // poweroff before mainboard burns OR low bat 3
 	  setError(EC_BOARD_OVER_TEMP);

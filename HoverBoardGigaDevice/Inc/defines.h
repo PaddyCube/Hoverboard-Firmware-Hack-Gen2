@@ -35,7 +35,8 @@
 #include "../Inc/config.h"
 
 //#include "boards/Hover1_defines.h"
-#include "boards/YK201A_defines.h"
+//#include "boards/YK201A_defines.h"
+#include "boards/TTSD22_defines.h"
 
 // Useful math function defines
 #define ABS(a) (((a) < 0.0) ? -(a) : (a))
