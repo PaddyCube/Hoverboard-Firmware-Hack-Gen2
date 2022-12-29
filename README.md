@@ -1,3 +1,10 @@
+### Why I forked it
+I use Hoverboard Hardware to build robots based on ROS, robot operating system. Thanks to Alex Makarov, we have a ROS driver for the Hoverboards using the large board. But sadly, the firmware is not compatible with Hoverboards using two mainboards (split boards). There exists another repository, which provides a firmware for those PCB, provided by Flo199213. But this isn't based on FOC firmware provided by Emanuel Ferru. Candas1 created a fork to bring FOC to the firmware for split boards.
+
+I forked it to combine the ROS parts to the splitboard foc firmware and hopefully will enable us to use these kind of Hoverboards in ROS as we already do with the boards coming with large PCB.
+
+REST OF README HASN'T BEEN CHANGED BY ME, WORK IN PROGRESS, NOT OPERATIONAL NOW
+
 #### Updates:
 ````
 - Firmware is ready.
